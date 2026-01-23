@@ -11,6 +11,7 @@ import (
 
 	"github.com/matzehuels/stacktower/pkg/dag"
 	"github.com/matzehuels/stacktower/pkg/deps"
+	"github.com/matzehuels/stacktower/pkg/deps/dotnet"
 	"github.com/matzehuels/stacktower/pkg/deps/golang"
 	"github.com/matzehuels/stacktower/pkg/deps/java"
 	"github.com/matzehuels/stacktower/pkg/deps/javascript"
@@ -32,6 +33,7 @@ var languages = []*deps.Language{
 	php.Language,
 	java.Language,
 	golang.Language,
+	dotnet.Language,
 }
 
 // parseOpts holds the command-line flags for the parse command.
