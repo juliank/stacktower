@@ -104,8 +104,13 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 						version = cpmVer
 					}
 				}
-				
-				g.AddNode(dag.Node{ID: pkg.Include})
+
+				// Create node with version metadata if available
+				meta := dag.Metadata{}
+				if version != "" {
+					meta["version"] = version
+				}
+				g.AddNode(dag.Node{ID: pkg.Include, Meta: meta})
 				g.AddEdge(dag.Edge{From: rootID, To: pkg.Include})
 			}
 		}
@@ -139,16 +144,16 @@ type csprojPackageReference struct {
 func loadCPMVersions(csprojPath string) (map[string]string, error) {
 	// Start from the .csproj directory and walk up
 	dir := filepath.Dir(csprojPath)
-	
+
 	for {
 		propsPath := filepath.Join(dir, "Directory.Packages.props")
-		
+
 		// Check if the file exists
 		if _, err := os.Stat(propsPath); err == nil {
 			// Found it, parse it
 			return parseCPMFile(propsPath)
 		}
-		
+
 		// Move up one directory
 		parent := filepath.Dir(dir)
 		if parent == dir {
@@ -157,7 +162,7 @@ func loadCPMVersions(csprojPath string) (map[string]string, error) {
 		}
 		dir = parent
 	}
-	
+
 	return nil, fmt.Errorf("Directory.Packages.props not found")
 }
 
@@ -167,12 +172,12 @@ func parseCPMFile(path string) (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read Directory.Packages.props: %w", err)
 	}
-	
+
 	var project cpmXML
 	if err := xml.Unmarshal(data, &project); err != nil {
 		return nil, fmt.Errorf("failed to parse Directory.Packages.props XML: %w", err)
 	}
-	
+
 	// Build version map
 	versions := make(map[string]string)
 	for _, itemGroup := range project.ItemGroups {
@@ -182,7 +187,7 @@ func parseCPMFile(path string) (map[string]string, error) {
 			}
 		}
 	}
-	
+
 	return versions, nil
 }
 

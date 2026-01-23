@@ -62,7 +62,9 @@ func (p *PackagesConfig) Parse(path string, opts deps.Options) (*deps.ManifestRe
 
 	// Add direct dependencies as edges
 	for _, pkg := range pkgConfig.Packages {
-		g.AddNode(dag.Node{ID: pkg.ID})
+		// Create node with version metadata
+		meta := dag.Metadata{"version": pkg.Version}
+		g.AddNode(dag.Node{ID: pkg.ID, Meta: meta})
 		g.AddEdge(dag.Edge{From: rootID, To: pkg.ID})
 	}
 
