@@ -174,3 +174,74 @@ func TestCsProj_Parse(t *testing.T) {
 		t.Errorf("Root has %d children, want 2", len(children))
 	}
 }
+
+func TestCsProj_Parse_CPM(t *testing.T) {
+// Create a temporary directory structure with Directory.Packages.props and .csproj
+tmpDir := t.TempDir()
+projectDir := filepath.Join(tmpDir, "MyApp")
+if err := os.Mkdir(projectDir, 0755); err != nil {
+t.Fatalf("Failed to create project directory: %v", err)
+}
+
+// Create Directory.Packages.props in solution root
+propsContent := `<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="8.0.0" />
+  </ItemGroup>
+</Project>`
+
+propsPath := filepath.Join(tmpDir, "Directory.Packages.props")
+if err := os.WriteFile(propsPath, []byte(propsContent), 0644); err != nil {
+t.Fatalf("Failed to write Directory.Packages.props: %v", err)
+}
+
+// Create .csproj without version attributes (CPM style)
+csprojContent := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+</Project>`
+
+csprojPath := filepath.Join(projectDir, "MyApp.csproj")
+if err := os.WriteFile(csprojPath, []byte(csprojContent), 0644); err != nil {
+t.Fatalf("Failed to write .csproj: %v", err)
+}
+
+parser := &CsProj{}
+result, err := parser.Parse(csprojPath, deps.Options{})
+if err != nil {
+t.Fatalf("Parse() error = %v", err)
+}
+
+if result.Type != "csproj" {
+t.Errorf("result.Type = %q, want %q", result.Type, "csproj")
+}
+
+if result.RootPackage != "MyApp" {
+t.Errorf("result.RootPackage = %q, want %q", result.RootPackage, "MyApp")
+}
+
+// Check that graph has nodes
+if result.Graph == nil {
+t.Fatal("result.Graph is nil")
+}
+
+g := result.Graph.(*dag.DAG)
+if g.NodeCount() != 3 { // root + 2 packages
+t.Errorf("Graph has %d nodes, want 3", g.NodeCount())
+}
+
+// Check edges exist - verify root has 2 children
+children := g.Children("__project__")
+if len(children) != 2 {
+t.Errorf("Root has %d children, want 2", len(children))
+}
+}

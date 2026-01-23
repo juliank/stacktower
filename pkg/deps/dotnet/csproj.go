@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/matzehuels/stacktower/pkg/dag"
@@ -12,6 +13,7 @@ import (
 
 // CsProj parses .csproj files (modern SDK-style .NET Core/.NET 5+ format).
 // Format: MSBuild XML file with PackageReference elements.
+// Supports Central Package Management (CPM) by looking for Directory.Packages.props.
 //
 // Example .csproj:
 //
@@ -22,6 +24,15 @@ import (
 //	  <ItemGroup>
 //	    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
 //	    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
+//	  </ItemGroup>
+//	</Project>
+//
+// With CPM, versions are omitted and centrally managed:
+//
+//	Directory.Packages.props:
+//	<Project>
+//	  <ItemGroup>
+//	    <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
 //	  </ItemGroup>
 //	</Project>
 type CsProj struct {
@@ -45,6 +56,7 @@ func (p *CsProj) Supports(name string) bool {
 
 // Parse reads a .csproj file and builds a dependency graph.
 // It only includes direct dependencies; transitive dependencies must be resolved via the registry.
+// Supports Central Package Management (CPM) by searching for Directory.Packages.props in parent directories.
 func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, error) {
 	// Read the XML file
 	data, err := os.ReadFile(path)
@@ -56,6 +68,13 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 	var project csprojXML
 	if err := xml.Unmarshal(data, &project); err != nil {
 		return nil, fmt.Errorf("failed to parse .csproj XML: %w", err)
+	}
+
+	// Try to load Central Package Management versions
+	cpmVersions, err := loadCPMVersions(path)
+	if err != nil {
+		// CPM is optional, continue without it
+		cpmVersions = nil
 	}
 
 	// Create graph
@@ -78,6 +97,14 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 	for _, itemGroup := range project.ItemGroups {
 		for _, pkg := range itemGroup.PackageReferences {
 			if pkg.Include != "" {
+				// If version is not specified in .csproj, try CPM
+				version := pkg.Version
+				if version == "" && cpmVersions != nil {
+					if cpmVer, ok := cpmVersions[pkg.Include]; ok {
+						version = cpmVer
+					}
+				}
+				
 				g.AddNode(dag.Node{ID: pkg.Include})
 				g.AddEdge(dag.Edge{From: rootID, To: pkg.Include})
 			}
@@ -103,6 +130,73 @@ type csprojItemGroup struct {
 }
 
 type csprojPackageReference struct {
+	Include string `xml:"Include,attr"`
+	Version string `xml:"Version,attr"`
+}
+
+// loadCPMVersions searches for Directory.Packages.props in parent directories
+// and returns a map of package name to version for Central Package Management.
+func loadCPMVersions(csprojPath string) (map[string]string, error) {
+	// Start from the .csproj directory and walk up
+	dir := filepath.Dir(csprojPath)
+	
+	for {
+		propsPath := filepath.Join(dir, "Directory.Packages.props")
+		
+		// Check if the file exists
+		if _, err := os.Stat(propsPath); err == nil {
+			// Found it, parse it
+			return parseCPMFile(propsPath)
+		}
+		
+		// Move up one directory
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached the root without finding the file
+			break
+		}
+		dir = parent
+	}
+	
+	return nil, fmt.Errorf("Directory.Packages.props not found")
+}
+
+// parseCPMFile reads and parses a Directory.Packages.props file.
+func parseCPMFile(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read Directory.Packages.props: %w", err)
+	}
+	
+	var project cpmXML
+	if err := xml.Unmarshal(data, &project); err != nil {
+		return nil, fmt.Errorf("failed to parse Directory.Packages.props XML: %w", err)
+	}
+	
+	// Build version map
+	versions := make(map[string]string)
+	for _, itemGroup := range project.ItemGroups {
+		for _, pkgVer := range itemGroup.PackageVersions {
+			if pkgVer.Include != "" && pkgVer.Version != "" {
+				versions[pkgVer.Include] = pkgVer.Version
+			}
+		}
+	}
+	
+	return versions, nil
+}
+
+// XML structure for Directory.Packages.props
+type cpmXML struct {
+	XMLName    xml.Name       `xml:"Project"`
+	ItemGroups []cpmItemGroup `xml:"ItemGroup"`
+}
+
+type cpmItemGroup struct {
+	PackageVersions []cpmPackageVersion `xml:"PackageVersion"`
+}
+
+type cpmPackageVersion struct {
 	Include string `xml:"Include,attr"`
 	Version string `xml:"Version,attr"`
 }
