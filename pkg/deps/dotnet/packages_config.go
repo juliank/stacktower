@@ -1,6 +1,7 @@
 package dotnet
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
 	"os"
@@ -28,9 +29,9 @@ func (p *PackagesConfig) Type() string {
 	return "packages"
 }
 
-// IncludesTransitive returns false because packages.config only lists direct dependencies.
+// IncludesTransitive returns true if a resolver is available to fetch transitive dependencies.
 func (p *PackagesConfig) IncludesTransitive() bool {
-	return false
+	return p.resolver != nil
 }
 
 // Supports checks if the filename matches this parser.
@@ -60,12 +61,27 @@ func (p *PackagesConfig) Parse(path string, opts deps.Options) (*deps.ManifestRe
 	rootID := "__project__"
 	g.AddNode(dag.Node{ID: rootID, Row: 0})
 
-	// Add direct dependencies as edges
+	// Collect direct dependencies
+	var directDeps []string
 	for _, pkg := range pkgConfig.Packages {
-		// Create node with version metadata
-		meta := dag.Metadata{"version": pkg.Version}
-		g.AddNode(dag.Node{ID: pkg.ID, Meta: meta})
-		g.AddEdge(dag.Edge{From: rootID, To: pkg.ID})
+		directDeps = append(directDeps, pkg.ID)
+	}
+
+	// If resolver is available, fetch transitive dependencies
+	if p.resolver != nil {
+		var err error
+		g, err = p.resolve(context.Background(), directDeps, opts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve dependencies: %w", err)
+		}
+	} else {
+		// Without resolver, just add direct dependencies
+		for _, pkg := range pkgConfig.Packages {
+			// Create node with version metadata
+			meta := dag.Metadata{"version": pkg.Version}
+			g.AddNode(dag.Node{ID: pkg.ID, Meta: meta})
+			g.AddEdge(dag.Edge{From: rootID, To: pkg.ID})
+		}
 	}
 
 	return &deps.ManifestResult{
@@ -86,4 +102,30 @@ type packagesPackage struct {
 	ID              string `xml:"id,attr"`
 	Version         string `xml:"version,attr"`
 	TargetFramework string `xml:"targetFramework,attr"`
+}
+
+// resolve fetches transitive dependencies for all direct dependencies.
+// It merges the sub-graphs from each package into a single graph.
+func (p *PackagesConfig) resolve(ctx context.Context, pkgs []string, opts deps.Options) (*dag.DAG, error) {
+	merged := dag.New(nil)
+	_ = merged.AddNode(dag.Node{ID: "__project__", Meta: dag.Metadata{"virtual": true}})
+
+	for _, pkg := range pkgs {
+		g, err := p.resolver.Resolve(ctx, pkg, opts)
+		if err != nil {
+			opts.Logger("resolve failed: %s: %v", pkg, err)
+			_ = merged.AddNode(dag.Node{ID: pkg})
+			_ = merged.AddEdge(dag.Edge{From: "__project__", To: pkg})
+			continue
+		}
+		for _, n := range g.Nodes() {
+			_ = merged.AddNode(dag.Node{ID: n.ID, Meta: n.Meta})
+		}
+		for _, e := range g.Edges() {
+			_ = merged.AddEdge(dag.Edge{From: e.From, To: e.To})
+		}
+		_ = merged.AddEdge(dag.Edge{From: "__project__", To: pkg})
+	}
+
+	return merged, nil
 }

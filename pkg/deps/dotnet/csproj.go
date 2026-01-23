@@ -1,6 +1,7 @@
 package dotnet
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
 	"os"
@@ -44,9 +45,9 @@ func (p *CsProj) Type() string {
 	return "csproj"
 }
 
-// IncludesTransitive returns false because .csproj only lists direct dependencies.
+// IncludesTransitive returns true if a resolver is available to fetch transitive dependencies.
 func (p *CsProj) IncludesTransitive() bool {
-	return false
+	return p.resolver != nil
 }
 
 // Supports checks if the filename matches this parser.
@@ -93,25 +94,44 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 		projectName = ""
 	}
 
-	// Add direct dependencies as edges
+	// Collect direct dependencies
+	var directDeps []string
 	for _, itemGroup := range project.ItemGroups {
 		for _, pkg := range itemGroup.PackageReferences {
 			if pkg.Include != "" {
-				// If version is not specified in .csproj, try CPM
-				version := pkg.Version
-				if version == "" && cpmVersions != nil {
-					if cpmVer, ok := cpmVersions[pkg.Include]; ok {
-						version = cpmVer
-					}
-				}
+				directDeps = append(directDeps, pkg.Include)
+			}
+		}
+	}
 
-				// Create node with version metadata if available
-				meta := dag.Metadata{}
-				if version != "" {
-					meta["version"] = version
+	// If resolver is available, fetch transitive dependencies
+	if p.resolver != nil {
+		var err error
+		g, err = p.resolve(context.Background(), directDeps, opts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve dependencies: %w", err)
+		}
+	} else {
+		// Without resolver, just add direct dependencies
+		for _, itemGroup := range project.ItemGroups {
+			for _, pkg := range itemGroup.PackageReferences {
+				if pkg.Include != "" {
+					// If version is not specified in .csproj, try CPM
+					version := pkg.Version
+					if version == "" && cpmVersions != nil {
+						if cpmVer, ok := cpmVersions[pkg.Include]; ok {
+							version = cpmVer
+						}
+					}
+
+					// Create node with version metadata if available
+					meta := dag.Metadata{}
+					if version != "" {
+						meta["version"] = version
+					}
+					g.AddNode(dag.Node{ID: pkg.Include, Meta: meta})
+					g.AddEdge(dag.Edge{From: rootID, To: pkg.Include})
 				}
-				g.AddNode(dag.Node{ID: pkg.Include, Meta: meta})
-				g.AddEdge(dag.Edge{From: rootID, To: pkg.Include})
 			}
 		}
 	}
@@ -204,4 +224,30 @@ type cpmItemGroup struct {
 type cpmPackageVersion struct {
 	Include string `xml:"Include,attr"`
 	Version string `xml:"Version,attr"`
+}
+
+// resolve fetches transitive dependencies for all direct dependencies.
+// It merges the sub-graphs from each package into a single graph.
+func (p *CsProj) resolve(ctx context.Context, pkgs []string, opts deps.Options) (*dag.DAG, error) {
+	merged := dag.New(nil)
+	_ = merged.AddNode(dag.Node{ID: "__project__", Meta: dag.Metadata{"virtual": true}})
+
+	for _, pkg := range pkgs {
+		g, err := p.resolver.Resolve(ctx, pkg, opts)
+		if err != nil {
+			opts.Logger("resolve failed: %s: %v", pkg, err)
+			_ = merged.AddNode(dag.Node{ID: pkg})
+			_ = merged.AddEdge(dag.Edge{From: "__project__", To: pkg})
+			continue
+		}
+		for _, n := range g.Nodes() {
+			_ = merged.AddNode(dag.Node{ID: n.ID, Meta: n.Meta})
+		}
+		for _, e := range g.Edges() {
+			_ = merged.AddEdge(dag.Edge{From: e.From, To: e.To})
+		}
+		_ = merged.AddEdge(dag.Edge{From: "__project__", To: pkg})
+	}
+
+	return merged, nil
 }
