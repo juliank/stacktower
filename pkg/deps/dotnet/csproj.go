@@ -59,6 +59,9 @@ func (p *CsProj) Supports(name string) bool {
 // It only includes direct dependencies; transitive dependencies must be resolved via the registry.
 // Supports Central Package Management (CPM) by searching for Directory.Packages.props in parent directories.
 func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, error) {
+	// Apply defaults to options (including no-op logger if nil)
+	opts = opts.WithDefaults()
+
 	// Read the XML file
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -75,6 +78,7 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 	cpmVersions, err := loadCPMVersions(path)
 	if err != nil {
 		// CPM is optional, continue without it
+		opts.Logger("Central Package Management not loaded: %v", err)
 		cpmVersions = nil
 	}
 

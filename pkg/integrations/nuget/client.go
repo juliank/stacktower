@@ -169,7 +169,7 @@ func extractDependencies(groups []dependencyGroup) []string {
 	}
 
 	var deps []string
-	
+
 	// Stage 1: Look for framework-agnostic dependencies
 	// These dependencies apply to all target frameworks and are the safest choice
 	for _, group := range groups {

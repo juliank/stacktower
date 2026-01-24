@@ -42,6 +42,9 @@ func (p *PackagesConfig) Supports(name string) bool {
 // Parse reads a packages.config file and builds a dependency graph.
 // It only includes direct dependencies; transitive dependencies must be resolved via the registry.
 func (p *PackagesConfig) Parse(path string, opts deps.Options) (*deps.ManifestResult, error) {
+	// Apply defaults to options (including no-op logger if nil)
+	opts = opts.WithDefaults()
+
 	// Read the XML file
 	data, err := os.ReadFile(path)
 	if err != nil {
