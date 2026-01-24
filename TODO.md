@@ -39,6 +39,27 @@ For .NET applications, it's typical that an application consists of multiple pro
 
 Minor technical improvements and issue fixes.
 
+### Framework Targeting Accuracy
+
+- [ ] **Prefer newest framework version with minimal dependencies**
+  
+  **Issue**: The current three-stage dependency resolution (1. framework-agnostic, 2. modern .NET, 3. fallback) can select older framework targets that have more dependencies than newer versions support.
+  
+  **Example**: `Newtonsoft.Json` has different dependency sets per target framework:
+  - `.NETFramework 2.0-4.5`: No dependencies
+  - `.NETStandard 1.0`: 4 dependencies (Microsoft.CSharp, NETStandard.Library, etc.)
+  - `.NETStandard 1.3`: 6 dependencies
+  - `.NETStandard 2.0`: No dependencies
+  - `net6.0`: No dependencies
+  
+  Current algorithm picks `.NETStandard 1.0` or `1.3` (stage 1: framework-agnostic) when it should prefer `.NETStandard 2.0` or `net6.0` for modern applications. This makes modern packages appear to have outdated dependencies they don't actually need.
+  
+  **Proposed solutions**:
+  1. **Simple approach**: Check the newest supported .NET version first (e.g., `net6.0`). If it has no dependencies, use that regardless of older framework-agnostic targets.
+  2. **Advanced approach**: Derive the target framework from the root application being analyzed. Match dependency framework versions to the application's framework (or closest/newest match). This would require detecting the application's target framework from the manifest file.
+  
+  **Impact**: More accurate dependency graphs for modern .NET applications, avoiding false positives for legacy dependencies.
+
 ### Pre-PR Testing
 
 - [ ] **End-to-end testing with diverse real-world projects**
