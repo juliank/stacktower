@@ -153,15 +153,25 @@ func (c *Client) fetch(ctx context.Context, pkg string, info *PackageInfo) error
 }
 
 // extractDependencies parses dependency groups and returns a flat list of dependency names.
-// It prefers dependencies from the most common target framework or from the group with no target framework.
+//
+// NuGet packages can have different dependencies for different target frameworks.
+// This function implements a three-stage selection strategy to find the most compatible
+// dependency set:
+//
+//  1. Framework-agnostic dependencies (empty or "any" targetFramework)
+//  2. .NET Standard/Core/5+ dependencies (netstandard*, netcoreapp*, net6-8)
+//  3. First available dependency group as fallback
+//
+// This prioritizes modern .NET dependencies over legacy .NET Framework dependencies.
 func extractDependencies(groups []dependencyGroup) []string {
 	if len(groups) == 0 {
 		return nil
 	}
 
 	var deps []string
-
-	// First, try to find a group with no target framework (applies to all)
+	
+	// Stage 1: Look for framework-agnostic dependencies
+	// These dependencies apply to all target frameworks and are the safest choice
 	for _, group := range groups {
 		if group.TargetFramework == "" || group.TargetFramework == "any" {
 			for _, dep := range group.Dependencies {
@@ -171,8 +181,8 @@ func extractDependencies(groups []dependencyGroup) []string {
 		}
 	}
 
-	// Otherwise, take dependencies from the first group (typically the most compatible)
-	// or from .NET Standard / .NET Core groups
+	// Stage 2: Prefer .NET Standard, .NET Core, or modern .NET dependencies
+	// Modern .NET frameworks (netstandard, netcoreapp, net6+) provide the best compatibility
 	for _, group := range groups {
 		tf := strings.ToLower(group.TargetFramework)
 		if strings.Contains(tf, "netstandard") || strings.Contains(tf, "netcoreapp") || strings.Contains(tf, "net6") || strings.Contains(tf, "net7") || strings.Contains(tf, "net8") {
@@ -183,7 +193,9 @@ func extractDependencies(groups []dependencyGroup) []string {
 		}
 	}
 
-	// Fallback: use the first group
+	// Stage 3: Fallback to first available group
+	// If no framework-agnostic or modern .NET dependencies exist, use the first group
+	// This handles legacy .NET Framework packages and edge cases
 	if len(groups) > 0 && len(groups[0].Dependencies) > 0 {
 		for _, dep := range groups[0].Dependencies {
 			deps = append(deps, dep.ID)
