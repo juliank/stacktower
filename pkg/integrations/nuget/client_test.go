@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,13 +15,13 @@ import (
 // TestClient_FetchPackage tests fetching a well-known NuGet package.
 func TestClient_FetchPackage(t *testing.T) {
 	tests := []struct {
-		name         string
-		pkg          string
-		wantName     string
-		wantVersion  string
-		wantDepsLen  int
-		wantErr      bool
-		setupMock    func(*http.ServeMux, string)
+		name        string
+		pkg         string
+		wantName    string
+		wantVersion string
+		wantDepsLen int
+		wantErr     bool
+		setupMock   func(*http.ServeMux, string)
 	}{
 		{
 			name:        "valid package with dependencies",
@@ -45,12 +46,12 @@ func TestClient_FetchPackage(t *testing.T) {
 				// Mock catalog entry
 				mux.HandleFunc("/catalog/newtonsoft.json", func(w http.ResponseWriter, r *http.Request) {
 					json.NewEncoder(w).Encode(catalogEntry{
-						ID:          "Newtonsoft.Json",
-						Version:     "13.0.3",
-						Description: "Json.NET is a popular high-performance JSON framework for .NET",
-						ProjectURL:  "https://www.newtonsoft.com/json",
-						LicenseURL:  "https://licenses.nuget.org/MIT",
-						Authors:     "James Newton-King",
+						ID:               "Newtonsoft.Json",
+						Version:          "13.0.3",
+						Description:      "Json.NET is a popular high-performance JSON framework for .NET",
+						ProjectURL:       "https://www.newtonsoft.com/json",
+						LicenseURL:       "https://licenses.nuget.org/MIT",
+						Authors:          "James Newton-King",
 						DependencyGroups: []dependencyGroup{},
 					})
 				})
@@ -124,25 +125,25 @@ func TestClient_FetchPackage(t *testing.T) {
 			mux := http.NewServeMux()
 			server := httptest.NewServer(mux)
 			defer server.Close()
-			
+
 			// Set up mocks with access to server URL
 			tt.setupMock(mux, server.URL)
 
 			client := testClient(t, server.URL, server.URL, server.URL)
 
 			info, err := client.FetchPackage(context.Background(), tt.pkg, true)
-			
+
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("FetchPackage() expected error, got nil")
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Fatalf("FetchPackage() unexpected error: %v", err)
 			}
-			
+
 			if info.Name != tt.wantName {
 				t.Errorf("FetchPackage() Name = %v, want %v", info.Name, tt.wantName)
 			}
@@ -151,6 +152,34 @@ func TestClient_FetchPackage(t *testing.T) {
 			}
 			if len(info.Dependencies) != tt.wantDepsLen {
 				t.Errorf("FetchPackage() Dependencies length = %v, want %v", len(info.Dependencies), tt.wantDepsLen)
+			}
+		})
+	}
+}
+
+// TestClient_FetchPackage_EmptyInput tests that empty package names are properly rejected.
+func TestClient_FetchPackage_EmptyInput(t *testing.T) {
+	client, err := NewClient(time.Hour)
+	if err != nil {
+		t.Fatalf("NewClient() failed: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		pkg  string
+	}{
+		{"empty string", ""},
+		{"whitespace only", "   "},
+		{"tabs and spaces", "\t  \n  "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := client.FetchPackage(context.Background(), tt.pkg, true)
+			if err == nil {
+				t.Errorf("FetchPackage(%q) expected error for empty package name, got nil", tt.pkg)
+			} else if !strings.Contains(err.Error(), "empty") {
+				t.Errorf("FetchPackage(%q) expected error mentioning 'empty', got: %v", tt.pkg, err)
 			}
 		})
 	}
@@ -216,13 +245,13 @@ func TestExtractDependencies(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := extractDependencies(tt.groups)
-			
+
 			// Check length
 			if len(got) != len(tt.want) {
 				t.Errorf("extractDependencies() length = %v, want %v", len(got), len(tt.want))
 				return
 			}
-			
+
 			// Check each dependency
 			for i, dep := range got {
 				if dep != tt.want[i] {

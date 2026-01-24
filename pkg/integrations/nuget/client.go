@@ -77,6 +77,9 @@ func NewClient(cacheTTL time.Duration) (*Client, error) {
 func (c *Client) FetchPackage(ctx context.Context, pkg string, refresh bool) (*PackageInfo, error) {
 	// NuGet package names are case-insensitive, so we normalize to lowercase for API calls
 	pkgLower := strings.ToLower(strings.TrimSpace(pkg))
+	if pkgLower == "" {
+		return nil, fmt.Errorf("package name cannot be empty")
+	}
 	key := pkgLower
 
 	var info PackageInfo
@@ -157,7 +160,7 @@ func extractDependencies(groups []dependencyGroup) []string {
 	}
 
 	var deps []string
-	
+
 	// First, try to find a group with no target framework (applies to all)
 	for _, group := range groups {
 		if group.TargetFramework == "" || group.TargetFramework == "any" {
