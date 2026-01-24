@@ -1,0 +1,100 @@
+# TODO
+
+This document tracks future improvements and enhancements for the stacktower project, with a focus on the .NET/NuGet integration.
+
+## Ideas
+
+New features and significant improvements.
+
+### 1. Solution File (.sln) Support
+
+For .NET applications, it's typical that an application consists of multiple projects, all referenced from a solution file (.sln). Currently, we support both legacy `packages.config` files and modern `.csproj` files with dependencies, but we require targeting individual project files.
+
+**Proposal**: Add support for targeting `.sln` files as the application root. This would:
+- Parse the solution file to discover all referenced projects
+- Loop through all the referenced project files
+- Build up the dependency graph for the whole solution
+- Provide a complete view of all dependencies across all projects
+
+**Implementation considerations**:
+- Solution file format is text-based with project references
+- Need to handle relative paths from solution to projects
+- Should support both old-style and new-style .sln formats
+- Consider how to merge graphs from multiple projects
+- Determine root node representation (solution vs individual projects)
+
+### 2. Support for Additional Manifest Formats
+
+- **project.json**: Deprecated but might still exist in legacy codebases
+- **nuget.config**: Support for custom feeds and package sources
+
+### 3. Enhanced Metadata from NuGet.org
+
+- Download counts for popularity metrics
+- License validation and compatibility checking
+- Security advisories integration
+- Deprecation warnings
+
+## Improvements and Fixes
+
+Minor technical improvements and issue fixes.
+
+### Pre-PR Testing
+
+- [ ] **End-to-end testing with diverse real-world projects**
+  - Test with various .NET project structures
+  - Verify CPM scenarios with complex configurations
+  - Test deep ProjectReference chains
+  - Validate framework targeting logic with edge cases
+
+- [ ] **Edge case validation**
+  - Packages with no dependencies
+  - Packages with only legacy .NET Framework targets (net47, net48, etc.)
+  - Circular ProjectReference scenarios (if possible in .NET)
+  - Invalid or malformed CPM files
+  - Network failures and timeout scenarios
+  - Very large projects with 100+ dependencies
+
+- [ ] **Code review self-check**
+  - Verify against CONTRIBUTING.md guidelines
+  - Cross-reference with npm/pypi implementations for consistency
+  - Search for any remaining TODO/FIXME comments in code
+  - Check for proper error handling in all code paths
+
+- [ ] **Documentation review**
+  - Verify all public APIs have complete documentation
+  - Check for typos and grammar in comments
+  - Ensure code examples are accurate and runnable
+  - Validate that doc.go examples match actual API
+
+### Performance Optimizations
+
+- [ ] **Parallel ProjectReference parsing**: Currently processes references sequentially; could parse multiple project files concurrently
+
+- [ ] **Batch API requests**: Group multiple NuGet API calls where possible to reduce latency
+
+- [ ] **Caching improvements**: Consider caching parsed .csproj files to avoid re-parsing in complex ProjectReference chains
+
+### Code Quality
+
+- [ ] **Add more test coverage for error paths**: Ensure all error returns are tested
+
+- [ ] **Refactor extractDependencies**: Consider breaking down the three-stage logic into separate functions for better testability
+
+- [ ] **Add benchmarks**: Performance benchmarks for parsing large .csproj files and complex dependency graphs
+
+### Documentation
+
+- [ ] **Add troubleshooting section**: Common issues and solutions (CPM not loading, framework targeting, etc.)
+
+- [ ] **Add architecture diagram**: Visual representation of the three-endpoint NuGet API flow
+
+- [ ] **Add examples directory**: Real-world example .csproj and packages.config files with expected outputs
+
+### Minor Technical Debt
+
+- [ ] **Consistent error wrapping**: Review all error returns for consistent use of fmt.Errorf with context
+
+- [ ] **Logging consistency**: Ensure all significant operations have appropriate log levels
+
+- [ ] **Configuration options**: Consider exposing more configuration options (API URLs, timeouts, retry behavior)
