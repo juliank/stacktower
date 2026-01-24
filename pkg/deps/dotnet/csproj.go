@@ -94,7 +94,7 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 		projectName = ""
 	}
 
-	// Collect direct dependencies
+	// Collect direct package dependencies
 	var directDeps []string
 	for _, itemGroup := range project.ItemGroups {
 		for _, pkg := range itemGroup.PackageReferences {
@@ -102,13 +102,50 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 				directDeps = append(directDeps, pkg.Include)
 			}
 		}
+	}
+
+	// Process project references recursively
+	baseDir := filepath.Dir(path)
+	for _, itemGroup := range project.ItemGroups {
 		for _, proj := range itemGroup.ProjectReferences {
-			if proj.Include != "" {
-				// Extract project name from path (e.g., "..\Lib\Lib.csproj" -> "Lib")
-				projPath := strings.ReplaceAll(proj.Include, "\\", "/")
-				projName := filepath.Base(projPath)
-				projName = strings.TrimSuffix(projName, ".csproj")
-				directDeps = append(directDeps, projName)
+			if proj.Include == "" {
+				continue
+			}
+
+			// Resolve relative path (normalize Windows backslashes)
+			projPath := strings.ReplaceAll(proj.Include, "\\", "/")
+			referencedPath := filepath.Join(baseDir, projPath)
+			referencedPath = filepath.Clean(referencedPath)
+
+			// Recursively parse the referenced project
+			refResult, err := p.Parse(referencedPath, opts)
+			if err != nil {
+				opts.Logger("failed to parse project reference %s: %v", referencedPath, err)
+				continue
+			}
+
+			// Extract project name for the node
+			projName := filepath.Base(referencedPath)
+			projName = strings.TrimSuffix(projName, ".csproj")
+
+			// Add project node and edge
+			g.AddNode(dag.Node{ID: projName})
+			g.AddEdge(dag.Edge{From: rootID, To: projName})
+
+			// Merge the referenced project's dependencies into our graph
+			refGraph := refResult.Graph.(*dag.DAG)
+			for _, n := range refGraph.Nodes() {
+				if n.ID != "__project__" {
+					g.AddNode(*n)
+				}
+			}
+			for _, e := range refGraph.Edges() {
+				if e.From == "__project__" {
+					// Redirect edges from referenced project's root to the project node
+					g.AddEdge(dag.Edge{From: projName, To: e.To})
+				} else {
+					g.AddEdge(e)
+				}
 			}
 		}
 	}
@@ -116,10 +153,27 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 	// If resolver is available, fetch transitive dependencies
 	if p.resolver != nil {
 		var err error
-		g, err = p.resolve(context.Background(), directDeps, opts)
+		resolvedGraph, err := p.resolve(context.Background(), directDeps, opts)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve dependencies: %w", err)
 		}
+
+		// Merge project references into the resolved graph
+		for _, n := range g.Nodes() {
+			if n.ID != "__project__" {
+				resolvedGraph.AddNode(*n)
+			}
+		}
+		for _, e := range g.Edges() {
+			if e.From == "__project__" {
+				// Reconnect from root
+				resolvedGraph.AddEdge(dag.Edge{From: "__project__", To: e.To})
+			} else {
+				resolvedGraph.AddEdge(e)
+			}
+		}
+
+		g = resolvedGraph
 	} else {
 		// Without resolver, just add direct dependencies
 		for _, itemGroup := range project.ItemGroups {
