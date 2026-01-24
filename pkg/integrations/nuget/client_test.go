@@ -1,16 +1,159 @@
 package nuget
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/matzehuels/stacktower/pkg/integrations"
 )
 
 // TestClient_FetchPackage tests fetching a well-known NuGet package.
-// This is a unit test that mocks the HTTP responses.
 func TestClient_FetchPackage(t *testing.T) {
-	// For now, this is a placeholder. We'll add proper mocking later.
-	// This ensures the package compiles and has test coverage.
-	t.Skip("Integration test - run with go test -tags=integration")
+	tests := []struct {
+		name         string
+		pkg          string
+		wantName     string
+		wantVersion  string
+		wantDepsLen  int
+		wantErr      bool
+		setupMock    func(*http.ServeMux, string)
+	}{
+		{
+			name:        "valid package with dependencies",
+			pkg:         "Newtonsoft.Json",
+			wantName:    "Newtonsoft.Json",
+			wantVersion: "13.0.3",
+			wantDepsLen: 0, // Newtonsoft.Json has no dependencies
+			wantErr:     false,
+			setupMock: func(mux *http.ServeMux, serverURL string) {
+				// Mock version index
+				mux.HandleFunc("/newtonsoft.json/index.json", func(w http.ResponseWriter, r *http.Request) {
+					json.NewEncoder(w).Encode(versionIndexResponse{
+						Versions: []string{"12.0.0", "13.0.1", "13.0.3"},
+					})
+				})
+				// Mock registration - returns catalog entry URL
+				mux.HandleFunc("/newtonsoft.json/13.0.3.json", func(w http.ResponseWriter, r *http.Request) {
+					json.NewEncoder(w).Encode(registrationResponse{
+						CatalogEntry: serverURL + "/catalog/newtonsoft.json",
+					})
+				})
+				// Mock catalog entry
+				mux.HandleFunc("/catalog/newtonsoft.json", func(w http.ResponseWriter, r *http.Request) {
+					json.NewEncoder(w).Encode(catalogEntry{
+						ID:          "Newtonsoft.Json",
+						Version:     "13.0.3",
+						Description: "Json.NET is a popular high-performance JSON framework for .NET",
+						ProjectURL:  "https://www.newtonsoft.com/json",
+						LicenseURL:  "https://licenses.nuget.org/MIT",
+						Authors:     "James Newton-King",
+						DependencyGroups: []dependencyGroup{},
+					})
+				})
+			},
+		},
+		{
+			name:        "package with dependencies",
+			pkg:         "Microsoft.Extensions.Logging",
+			wantName:    "Microsoft.Extensions.Logging",
+			wantVersion: "8.0.0",
+			wantDepsLen: 2,
+			wantErr:     false,
+			setupMock: func(mux *http.ServeMux, serverURL string) {
+				mux.HandleFunc("/microsoft.extensions.logging/index.json", func(w http.ResponseWriter, r *http.Request) {
+					json.NewEncoder(w).Encode(versionIndexResponse{
+						Versions: []string{"7.0.0", "8.0.0"},
+					})
+				})
+				mux.HandleFunc("/microsoft.extensions.logging/8.0.0.json", func(w http.ResponseWriter, r *http.Request) {
+					json.NewEncoder(w).Encode(registrationResponse{
+						CatalogEntry: serverURL + "/catalog/logging.json",
+					})
+				})
+				mux.HandleFunc("/catalog/logging.json", func(w http.ResponseWriter, r *http.Request) {
+					json.NewEncoder(w).Encode(catalogEntry{
+						ID:      "Microsoft.Extensions.Logging",
+						Version: "8.0.0",
+						DependencyGroups: []dependencyGroup{
+							{
+								TargetFramework: ".NETStandard2.0",
+								Dependencies: []dependency{
+									{ID: "Microsoft.Extensions.DependencyInjection.Abstractions", Range: "[8.0.0, )"},
+									{ID: "Microsoft.Extensions.Logging.Abstractions", Range: "[8.0.0, )"},
+								},
+							},
+						},
+					})
+				})
+			},
+		},
+		{
+			name:    "package not found",
+			pkg:     "NonExistent.Package",
+			wantErr: true,
+			setupMock: func(mux *http.ServeMux, serverURL string) {
+				mux.HandleFunc("/nonexistent.package/index.json", func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusNotFound)
+				})
+			},
+		},
+		{
+			name:    "empty package name",
+			pkg:     "",
+			wantErr: true,
+			setupMock: func(mux *http.ServeMux, serverURL string) {
+				// No mock needed - should fail before HTTP call
+			},
+		},
+		{
+			name:    "whitespace-only package name",
+			pkg:     "   ",
+			wantErr: true,
+			setupMock: func(mux *http.ServeMux, serverURL string) {
+				// No mock needed - should fail before HTTP call
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			server := httptest.NewServer(mux)
+			defer server.Close()
+			
+			// Set up mocks with access to server URL
+			tt.setupMock(mux, server.URL)
+
+			client := testClient(t, server.URL, server.URL, server.URL)
+
+			info, err := client.FetchPackage(context.Background(), tt.pkg, true)
+			
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("FetchPackage() expected error, got nil")
+				}
+				return
+			}
+			
+			if err != nil {
+				t.Fatalf("FetchPackage() unexpected error: %v", err)
+			}
+			
+			if info.Name != tt.wantName {
+				t.Errorf("FetchPackage() Name = %v, want %v", info.Name, tt.wantName)
+			}
+			if info.Version != tt.wantVersion {
+				t.Errorf("FetchPackage() Version = %v, want %v", info.Version, tt.wantVersion)
+			}
+			if len(info.Dependencies) != tt.wantDepsLen {
+				t.Errorf("FetchPackage() Dependencies length = %v, want %v", len(info.Dependencies), tt.wantDepsLen)
+			}
+		})
+	}
 }
 
 // TestExtractDependencies tests the dependency extraction logic.
@@ -73,13 +216,13 @@ func TestExtractDependencies(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := extractDependencies(tt.groups)
-
+			
 			// Check length
 			if len(got) != len(tt.want) {
 				t.Errorf("extractDependencies() length = %v, want %v", len(got), len(tt.want))
 				return
 			}
-
+			
 			// Check each dependency
 			for i, dep := range got {
 				if dep != tt.want[i] {
@@ -101,5 +244,22 @@ func TestNewClient(t *testing.T) {
 	}
 	if client.baseURL != "https://api.nuget.org/v3-flatcontainer" {
 		t.Errorf("NewClient() baseURL = %v, want https://api.nuget.org/v3-flatcontainer", client.baseURL)
+	}
+	if client.registrationURL != "https://api.nuget.org/v3/registration5-semver1" {
+		t.Errorf("NewClient() registrationURL = %v, want https://api.nuget.org/v3/registration5-semver1", client.registrationURL)
+	}
+}
+
+// testClient creates a test client with mock URLs for testing.
+func testClient(t *testing.T, baseURL, registrationURL, catalogURL string) *Client {
+	t.Helper()
+	cache, err := integrations.NewCache(time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &Client{
+		Client:          integrations.NewClient(cache, nil),
+		baseURL:         baseURL,
+		registrationURL: registrationURL,
 	}
 }
