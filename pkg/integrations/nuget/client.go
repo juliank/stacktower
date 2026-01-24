@@ -104,7 +104,7 @@ func (c *Client) fetch(ctx context.Context, pkg string, info *PackageInfo) error
 	}
 
 	if len(versionData.Versions) == 0 {
-		return fmt.Errorf("no versions found for package %s", pkg)
+		return fmt.Errorf("no versions found for package %s (API returned empty version list)", pkg)
 	}
 
 	// Get the latest version (versions are typically sorted, but we take the last one)
