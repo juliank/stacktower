@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -34,7 +35,8 @@ type PackageInfo struct {
 // All methods are safe for concurrent use by multiple goroutines.
 type Client struct {
 	*integrations.Client
-	baseURL string
+	baseURL         string
+	registrationURL string
 }
 
 // NewClient creates a NuGet client with the specified cache TTL.
@@ -50,8 +52,9 @@ func NewClient(cacheTTL time.Duration) (*Client, error) {
 		return nil, err
 	}
 	return &Client{
-		Client:  integrations.NewClient(cache, nil),
-		baseURL: "https://api.nuget.org/v3-flatcontainer",
+		Client:          integrations.NewClient(cache, nil),
+		baseURL:         "https://api.nuget.org/v3-flatcontainer",
+		registrationURL: "https://api.nuget.org/v3/registration5-semver1",
 	}, nil
 }
 
@@ -89,7 +92,7 @@ func (c *Client) FetchPackage(ctx context.Context, pkg string, refresh bool) (*P
 func (c *Client) fetch(ctx context.Context, pkg string, info *PackageInfo) error {
 	// Step 1: Get the version list to find the latest version
 	var versionData versionIndexResponse
-	versionURL := fmt.Sprintf("%s/%s/index.json", c.baseURL, pkg)
+	versionURL := fmt.Sprintf("%s/%s/index.json", c.baseURL, url.PathEscape(pkg))
 	if err := c.Get(ctx, versionURL, &versionData); err != nil {
 		if errors.Is(err, integrations.ErrNotFound) {
 			return fmt.Errorf("%w: nuget package %s", err, pkg)
@@ -107,7 +110,7 @@ func (c *Client) fetch(ctx context.Context, pkg string, info *PackageInfo) error
 	// Step 2: Get the package metadata from the registration API
 	// This returns a reference to the catalog entry
 	var registrationData registrationResponse
-	registrationURL := fmt.Sprintf("https://api.nuget.org/v3/registration5-semver1/%s/%s.json", pkg, latestVersion)
+	registrationURL := fmt.Sprintf("%s/%s/%s.json", c.registrationURL, url.PathEscape(pkg), url.PathEscape(latestVersion))
 	if err := c.Get(ctx, registrationURL, &registrationData); err != nil {
 		if !errors.Is(err, integrations.ErrNotFound) {
 			return err
@@ -154,7 +157,7 @@ func extractDependencies(groups []dependencyGroup) []string {
 	}
 
 	var deps []string
-
+	
 	// First, try to find a group with no target framework (applies to all)
 	for _, group := range groups {
 		if group.TargetFramework == "" || group.TargetFramework == "any" {
