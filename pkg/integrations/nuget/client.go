@@ -5,11 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/matzehuels/stacktower/pkg/integrations"
 )
+
+// modernNetRegex matches modern .NET target frameworks:
+// - netstandard (any version)
+// - netcoreapp (any version)
+// - net5.0, net6.0, net7.0, net8.0, net9.0, net10.0+ (unified .NET 5+)
+// The regex requires a period after the version number to distinguish modern .NET (net6.0)
+// from legacy .NET Framework (net47, net481).
+// Examples: ".NETStandard2.0", "netcoreapp3.1", "net6.0", "net10.0", "net7.0-windows"
+var modernNetRegex = regexp.MustCompile(`(?i)net(standard|coreapp|\d+\.)`)
 
 // PackageInfo holds metadata for a .NET package from NuGet.org.
 //
@@ -182,10 +192,10 @@ func extractDependencies(groups []dependencyGroup) []string {
 	}
 
 	// Stage 2: Prefer .NET Standard, .NET Core, or modern .NET dependencies
-	// Modern .NET frameworks (netstandard, netcoreapp, net6+) provide the best compatibility
+	// Modern .NET frameworks (netstandard, netcoreapp, net5+) provide the best compatibility
+	// Uses regex to match any current or future .NET version (net5, net6, net7, ... net99+)
 	for _, group := range groups {
-		tf := strings.ToLower(group.TargetFramework)
-		if strings.Contains(tf, "netstandard") || strings.Contains(tf, "netcoreapp") || strings.Contains(tf, "net6") || strings.Contains(tf, "net7") || strings.Contains(tf, "net8") {
+		if modernNetRegex.MatchString(group.TargetFramework) {
 			for _, dep := range group.Dependencies {
 				deps = append(deps, dep.ID)
 			}
