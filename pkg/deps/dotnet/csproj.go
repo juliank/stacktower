@@ -102,6 +102,15 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 				directDeps = append(directDeps, pkg.Include)
 			}
 		}
+		for _, proj := range itemGroup.ProjectReferences {
+			if proj.Include != "" {
+				// Extract project name from path (e.g., "..\Lib\Lib.csproj" -> "Lib")
+				projPath := strings.ReplaceAll(proj.Include, "\\", "/")
+				projName := filepath.Base(projPath)
+				projName = strings.TrimSuffix(projName, ".csproj")
+				directDeps = append(directDeps, projName)
+			}
+		}
 	}
 
 	// If resolver is available, fetch transitive dependencies
@@ -152,11 +161,16 @@ type csprojXML struct {
 
 type csprojItemGroup struct {
 	PackageReferences []csprojPackageReference `xml:"PackageReference"`
+	ProjectReferences []csprojProjectReference `xml:"ProjectReference"`
 }
 
 type csprojPackageReference struct {
 	Include string `xml:"Include,attr"`
 	Version string `xml:"Version,attr"`
+}
+
+type csprojProjectReference struct {
+	Include string `xml:"Include,attr"`
 }
 
 // loadCPMVersions searches for Directory.Packages.props in parent directories
