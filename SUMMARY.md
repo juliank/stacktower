@@ -4,9 +4,9 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
 
 ## Summary Statistics
 
-- **10 files changed, 1463 lines added** (all new code, no deletions)
-- **14 commits total**
-- **All TODO items completed**
+- **10 files changed, 1500+ lines added** (all new code, minimal deletions)
+- **15 commits total**
+- **Framework targeting accuracy improvement completed**
 
 ## Changed Files
 
@@ -158,6 +158,13 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
     - Simplified regex: `(?i)net(standard|coreapp|\d+\.)`
     - Supports all current and future .NET versions
 
+15. `feat(nuget): improve framework targeting to prefer newest available`
+    - Added sophisticated framework comparison logic
+    - Framework priority ranking system (modern > core > standard > legacy)
+    - Numeric version comparison within framework families
+    - Correctly selects net6.0 over netstandard1.3 for accurate dependencies
+    - Added 5 new comprehensive test cases
+
 ## Features Implemented
 
 ### NuGet API Integration
@@ -179,9 +186,11 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
 ### Framework Targeting
 - ✅ Three-stage selection strategy
 - ✅ Framework-agnostic dependencies (highest priority)
-- ✅ Modern .NET (netstandard, netcoreapp, net5+)
-- ✅ Legacy .NET Framework fallback
-- ✅ Future-proof regex matching
+- ✅ Newest framework selection with sophisticated comparison
+- ✅ Framework priority ranking (modern > core > standard > legacy)
+- ✅ Numeric version comparison within framework families
+- ✅ Distinguishes modern .NET (net6.0) from legacy Framework (net481)
+- ✅ Future-proof: supports net9.0, net100.0+, etc.
 
 ### Testing
 - ✅ Unit tests with HTTP mocking
@@ -415,23 +424,25 @@ go build -o bin/stacktower .
 
 ## Statistics
 
-- **Total lines added**: 1,463
-- **Test coverage**: Comprehensive unit + integration tests
+- **Total lines added**: 1,500+
+- **Test coverage**: Comprehensive unit + integration tests (5 new test cases added)
 - **Documentation**: 110 lines across 2 doc.go files
-- **Commits**: 14 (all following conventional commits)
-- **Time estimate**: ~4-5 hours total development + 2-3 hours testing/refinement
-- **Files created**: 10 new files, 0 modified existing files (except parse.go)
+- **Commits**: 15 (all following conventional commits)
+- **Time estimate**: ~5-6 hours total development + 3 hours testing/refinement
+- **Files created**: 10 new files, 1 modified existing file (parse.go)
+- **Files modified for improvements**: 2 files (client.go, client_test.go)
 
 ## Status
 
 ✅ **Implementation Complete**  
 ✅ **All Tests Passing**  
+✅ **Framework Targeting Accuracy Fixed**  
+✅ **Lint Checks Passing**  
 ✅ **Documentation Complete**  
-✅ **Quality Improvements Done**  
 ✅ **Ready for PR Submission**
 
 ---
 
-*Last updated: January 24, 2026*  
+*Last updated: January 25, 2026*  
 *Branch: feature/nuget*  
 *Base: main*

@@ -41,24 +41,22 @@ Minor technical improvements and issue fixes.
 
 ### Framework Targeting Accuracy
 
-- [ ] **Prefer newest framework version with minimal dependencies**
+- [x] **Prefer newest framework version** ✅ COMPLETED (January 25, 2026)
   
-  **Issue**: The current three-stage dependency resolution (1. framework-agnostic, 2. modern .NET, 3. fallback) can select older framework targets that have more dependencies than newer versions support.
+  **Solution Implemented**: Replaced simple regex matching with sophisticated framework comparison logic that selects the newest available target framework.
   
-  **Example**: `Newtonsoft.Json` has different dependency sets per target framework:
-  - `.NETFramework 2.0-4.5`: No dependencies
-  - `.NETStandard 1.0`: 4 dependencies (Microsoft.CSharp, NETStandard.Library, etc.)
-  - `.NETStandard 1.3`: 6 dependencies
-  - `.NETStandard 2.0`: No dependencies
-  - `net6.0`: No dependencies
+  **Implementation Details**:
+  - Added `targetFramework` struct with parsing logic
+  - Framework priority ranking: Modern .NET (300) > .NET Core (200) > .NET Standard (100) > Legacy Framework (10)
+  - Numeric version comparison within same framework family
+  - Distinguishes modern .NET (net6.0) from legacy Framework (net481) by period presence
   
-  Current algorithm picks `.NETStandard 1.0` or `1.3` (stage 1: framework-agnostic) when it should prefer `.NETStandard 2.0` or `net6.0` for modern applications. This makes modern packages appear to have outdated dependencies they don't actually need.
+  **Results**:
+  - `Newtonsoft.Json` now correctly shows 0 dependencies for net6.0 instead of 6 legacy dependencies from netstandard1.3
+  - Accurate dependency graphs for modern .NET applications
+  - Future-proof: automatically supports net9.0, net10.0, etc.
   
-  **Proposed solutions**:
-  1. **Simple approach**: Check the newest supported .NET version first (e.g., `net6.0`). If it has no dependencies, use that regardless of older framework-agnostic targets.
-  2. **Advanced approach**: Derive the target framework from the root application being analyzed. Match dependency framework versions to the application's framework (or closest/newest match). This would require detecting the application's target framework from the manifest file.
-  
-  **Impact**: More accurate dependency graphs for modern .NET applications, avoiding false positives for legacy dependencies.
+  **Next Step**: Consider deriving target framework from root application's .csproj file (TargetFramework element) for even more accurate resolution in manifest parsing scenarios.
 
 ### Pre-PR Testing
 

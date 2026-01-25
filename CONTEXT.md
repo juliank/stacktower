@@ -74,16 +74,27 @@ Stacktower uses a plugin-style architecture where each language ecosystem (Pytho
 
 **Framework targeting algorithm** (`extractDependencies`):
 ```
-Stage 1: Framework-agnostic (netstandard, netcoreapp) - HIGHEST PRIORITY
-Stage 2: Modern .NET (net5.0+) via regex match - MEDIUM PRIORITY  
+Stage 1: Framework-agnostic (empty or "any" targetFramework) - HIGHEST PRIORITY
+Stage 2: Newest available framework - Sophisticated comparison logic
 Stage 3: First available group - FALLBACK
 
-Regex: modernNetRegex = regexp.MustCompile(`(?i)net(standard|coreapp|\d+\.)`)
-- Matches: netstandard1.3, netcoreapp3.1, net5.0, net6.0, net10.0, net100.0
-- Excludes: net47, net481 (legacy .NET Framework - no period after digits)
+Framework Comparison Logic:
+1. Parse framework string into family + version (parseTargetFramework)
+2. Assign priority scores to framework families:
+   - Modern .NET (net6.0+): 300
+   - .NET Core (netcoreapp3.1): 200
+   - .NET Standard (netstandard2.1): 100
+   - Legacy .NET Framework (net481): 10
+3. Compare families by priority; if same family, compare versions numerically
+4. Select dependencies from newest framework group
+
+Framework Detection:
+- Uses regex: frameworkRegex = regexp.MustCompile(`(?i)^(net)(standard|coreapp)?(\d+(?:\.\d+)*)`)
+- Distinguishes modern .NET (net6.0) from legacy Framework (net481) by period presence
+- Supports future versions automatically (net9.0, net100.0, etc.)
 ```
 
-**Known Issue (documented in TODO.md)**: Algorithm can select older framework targets with more dependencies (e.g., netstandard1.0 with 4 deps) when newer targets have fewer (e.g., net6.0 with 0 deps). Example: Newtonsoft.Json appears to have Microsoft.CSharp dependency when used in modern apps it actually doesn't.
+**Result**: Accurate dependency resolution for modern .NET applications. Example: Newtonsoft.Json correctly shows 0 dependencies for net6.0 instead of showing legacy dependencies from netstandard1.3.
 
 **Error handling**:
 - Returns `integrations.ErrNotFound` for 404
@@ -412,14 +423,14 @@ These follow the same architecture and testing patterns.
 
 - Branch: `feature/nuget`
 - Base: `main`
-- Status: All features implemented, all tests passing, ready for PR or additional improvements
-- Commits: 14 (all follow conventional commits format)
+- Status: All features implemented, all tests passing, framework targeting improved, ready for PR
+- Commits: 15 (all follow conventional commits format)
 - Files changed: 10 new files, 1 modified file (parse.go)
-- Lines added: 1463 (no deletions)
-- Last commit: "refactor(nuget): use regex for future-proof .NET version matching"
+- Lines added: 1500+ (including framework comparison improvements)
+- Last commit: "feat(nuget): improve framework targeting to prefer newest available"
 
 ---
 
-*Generated: January 25, 2026*
+*Updated: January 25, 2026*
 *Purpose: AI agent context for continuing NuGet/.NET integration work*
 *Not intended for human consumption - see SUMMARY.md and TODO.md instead*
