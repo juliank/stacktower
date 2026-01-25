@@ -211,7 +211,7 @@ func TestExtractDependencies(t *testing.T) {
 			want: []string{"System.Text.Json", "Microsoft.Extensions.Logging"},
 		},
 		{
-			name: "multiple groups - prefers netstandard",
+			name: "multiple groups - prefers newest framework",
 			groups: []dependencyGroup{
 				{
 					TargetFramework: ".NETFramework4.6.1",
@@ -221,6 +221,12 @@ func TestExtractDependencies(t *testing.T) {
 				},
 				{
 					TargetFramework: ".NETStandard2.0",
+					Dependencies: []dependency{
+						{ID: "Newtonsoft.Json", Range: "[13.0.1, )"},
+					},
+				},
+				{
+					TargetFramework: "net6.0",
 					Dependencies: []dependency{
 						{ID: "System.Text.Json", Range: "[6.0.0, )"},
 					},
@@ -239,6 +245,78 @@ func TestExtractDependencies(t *testing.T) {
 				},
 			},
 			want: []string{"Common.Logging"},
+		},
+		{
+			name: "prefers net8.0 over net6.0",
+			groups: []dependencyGroup{
+				{
+					TargetFramework: "net6.0",
+					Dependencies: []dependency{
+						{ID: "OldDep", Range: "[1.0.0, )"},
+					},
+				},
+				{
+					TargetFramework: "net8.0",
+					Dependencies: []dependency{
+						{ID: "NewDep", Range: "[2.0.0, )"},
+					},
+				},
+			},
+			want: []string{"NewDep"},
+		},
+		{
+			name: "prefers netcoreapp over netstandard",
+			groups: []dependencyGroup{
+				{
+					TargetFramework: "netstandard2.0",
+					Dependencies: []dependency{
+						{ID: "StandardDep", Range: "[1.0.0, )"},
+					},
+				},
+				{
+					TargetFramework: "netcoreapp3.1",
+					Dependencies: []dependency{
+						{ID: "CoreDep", Range: "[2.0.0, )"},
+					},
+				},
+			},
+			want: []string{"CoreDep"},
+		},
+		{
+			name: "prefers netstandard2.1 over netstandard2.0",
+			groups: []dependencyGroup{
+				{
+					TargetFramework: "netstandard2.0",
+					Dependencies: []dependency{
+						{ID: "Standard20Dep", Range: "[1.0.0, )"},
+					},
+				},
+				{
+					TargetFramework: "netstandard2.1",
+					Dependencies: []dependency{
+						{ID: "Standard21Dep", Range: "[2.0.0, )"},
+					},
+				},
+			},
+			want: []string{"Standard21Dep"},
+		},
+		{
+			name: "ignores legacy .NET Framework when modern available",
+			groups: []dependencyGroup{
+				{
+					TargetFramework: "net481",
+					Dependencies: []dependency{
+						{ID: "LegacyDep", Range: "[1.0.0, )"},
+					},
+				},
+				{
+					TargetFramework: "net6.0",
+					Dependencies: []dependency{
+						{ID: "ModernDep", Range: "[2.0.0, )"},
+					},
+				},
+			},
+			want: []string{"ModernDep"},
 		},
 	}
 

@@ -12,14 +12,118 @@ import (
 	"github.com/matzehuels/stacktower/pkg/integrations"
 )
 
-// modernNetRegex matches modern .NET target frameworks:
-// - netstandard (any version)
-// - netcoreapp (any version)
-// - net5.0, net6.0, net7.0, net8.0, net9.0, net10.0+ (unified .NET 5+)
-// The regex requires a period after the version number to distinguish modern .NET (net6.0)
-// from legacy .NET Framework (net47, net481).
-// Examples: ".NETStandard2.0", "netcoreapp3.1", "net6.0", "net10.0", "net7.0-windows"
-var modernNetRegex = regexp.MustCompile(`(?i)net(standard|coreapp|\d+\.)`)
+// frameworkRegex extracts framework family and version from target framework strings.
+// Captures: family (net/netstandard/netcoreapp) and version (digits and periods).
+// Examples: "net6.0" → ("net", "6.0"), "netstandard2.1" → ("netstandard", "2.1")
+var frameworkRegex = regexp.MustCompile(`(?i)^(net)(standard|coreapp)?(\d+(?:\.\d+)*)`)
+
+// targetFramework represents a parsed .NET target framework.
+type targetFramework struct {
+	family  string // "net", "netstandard", "netcoreapp", "netframework"
+	version string // e.g., "6.0", "2.1", "3.1", "481"
+	raw     string // original string for debugging
+}
+
+// frameworkPriority returns a numeric priority for framework families.
+// Higher values represent newer/preferred frameworks.
+func frameworkPriority(family string) int {
+	switch family {
+	case "net":
+		return 300 // Modern .NET (net5.0+)
+	case "netcoreapp":
+		return 200 // .NET Core
+	case "netstandard":
+		return 100 // .NET Standard
+	case "netframework":
+		return 10 // Legacy .NET Framework (net481, net48, etc.)
+	default:
+		return 0 // Unknown
+	}
+}
+
+// parseTargetFramework parses a target framework string into its components.
+// Returns nil if the string doesn't match a recognized .NET framework pattern.
+func parseTargetFramework(tf string) *targetFramework {
+	tf = strings.ToLower(strings.TrimSpace(tf))
+	if tf == "" || tf == "any" {
+		return nil
+	}
+
+	matches := frameworkRegex.FindStringSubmatch(tf)
+	if len(matches) < 4 {
+		return nil
+	}
+
+	family := "net"
+	version := matches[3]
+
+	if matches[2] != "" {
+		family = "net" + matches[2] // "netstandard" or "netcoreapp"
+	} else if version != "" && !strings.Contains(version, ".") {
+		// Legacy .NET Framework: net481, net48, net472 (no period in version)
+		family = "netframework"
+	}
+	// else: Modern .NET with period: net6.0, net8.0
+
+	return &targetFramework{
+		family:  family,
+		version: matches[3],
+		raw:     tf,
+	}
+}
+
+// compareVersions compares two version strings numerically.
+// Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal
+// Handles multi-part versions like "6.0", "2.1.1", etc.
+func compareVersions(v1, v2 string) int {
+	parts1 := strings.Split(v1, ".")
+	parts2 := strings.Split(v2, ".")
+
+	maxLen := len(parts1)
+	if len(parts2) > maxLen {
+		maxLen = len(parts2)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var n1, n2 int
+		if i < len(parts1) {
+			fmt.Sscanf(parts1[i], "%d", &n1)
+		}
+		if i < len(parts2) {
+			fmt.Sscanf(parts2[i], "%d", &n2)
+		}
+		if n1 > n2 {
+			return 1
+		}
+		if n1 < n2 {
+			return -1
+		}
+	}
+	return 0
+}
+
+// isNewerFramework returns true if tf1 is newer/more preferred than tf2.
+// Comparison logic:
+//  1. Compare family priority (modern .NET > .NET Core > .NET Standard)
+//  2. If same family, compare version numbers
+func isNewerFramework(tf1, tf2 *targetFramework) bool {
+	if tf1 == nil {
+		return false
+	}
+	if tf2 == nil {
+		return true
+	}
+
+	p1 := frameworkPriority(tf1.family)
+	p2 := frameworkPriority(tf2.family)
+
+	if p1 != p2 {
+		return p1 > p2
+	}
+
+	// Same family, compare versions
+	return compareVersions(tf1.version, tf2.version) > 0
+}
 
 // PackageInfo holds metadata for a .NET package from NuGet.org.
 //
@@ -165,25 +269,25 @@ func (c *Client) fetch(ctx context.Context, pkg string, info *PackageInfo) error
 // extractDependencies parses dependency groups and returns a flat list of dependency names.
 //
 // NuGet packages can have different dependencies for different target frameworks.
-// This function implements a three-stage selection strategy to find the most compatible
-// dependency set:
+// This function selects the dependency group for the newest/most modern target framework
+// available. Framework ordering (newest first):
+//   - Modern .NET: net9.0 > net8.0 > net7.0 > net6.0 > net5.0
+//   - .NET Core: netcoreapp3.1 > netcoreapp3.0 > netcoreapp2.2 > ...
+//   - .NET Standard: netstandard2.1 > netstandard2.0 > netstandard1.6 > ...
+//   - Legacy .NET Framework: net481 > net48 > net472 > ...
 //
-//  1. Framework-agnostic dependencies (empty or "any" targetFramework)
-//  2. .NET Standard/Core/5+ dependencies (netstandard*, netcoreapp*, net6-8)
-//  3. First available dependency group as fallback
-//
-// This prioritizes modern .NET dependencies over legacy .NET Framework dependencies.
+// Framework-agnostic dependencies (empty or "any" targetFramework) are returned immediately
+// as they apply to all frameworks.
 func extractDependencies(groups []dependencyGroup) []string {
 	if len(groups) == 0 {
 		return nil
 	}
 
-	var deps []string
-
 	// Stage 1: Look for framework-agnostic dependencies
 	// These dependencies apply to all target frameworks and are the safest choice
 	for _, group := range groups {
 		if group.TargetFramework == "" || group.TargetFramework == "any" {
+			var deps []string
 			for _, dep := range group.Dependencies {
 				deps = append(deps, dep.ID)
 			}
@@ -191,28 +295,41 @@ func extractDependencies(groups []dependencyGroup) []string {
 		}
 	}
 
-	// Stage 2: Prefer .NET Standard, .NET Core, or modern .NET dependencies
-	// Modern .NET frameworks (netstandard, netcoreapp, net5+) provide the best compatibility
-	// Uses regex to match any current or future .NET version (net5, net6, net7, ... net99+)
-	for _, group := range groups {
-		if modernNetRegex.MatchString(group.TargetFramework) {
-			for _, dep := range group.Dependencies {
-				deps = append(deps, dep.ID)
-			}
-			return deps
+	// Stage 2: Find the newest target framework among all groups
+	var newestGroup *dependencyGroup
+	var newestFramework *targetFramework
+
+	for i := range groups {
+		tf := parseTargetFramework(groups[i].TargetFramework)
+		if tf == nil {
+			continue
+		}
+
+		if isNewerFramework(tf, newestFramework) {
+			newestFramework = tf
+			newestGroup = &groups[i]
 		}
 	}
 
-	// Stage 3: Fallback to first available group
-	// If no framework-agnostic or modern .NET dependencies exist, use the first group
-	// This handles legacy .NET Framework packages and edge cases
+	// Return dependencies from the newest framework group
+	if newestGroup != nil {
+		var deps []string
+		for _, dep := range newestGroup.Dependencies {
+			deps = append(deps, dep.ID)
+		}
+		return deps
+	}
+
+	// Stage 3: Fallback to first available group if no frameworks were parseable
 	if len(groups) > 0 && len(groups[0].Dependencies) > 0 {
+		var deps []string
 		for _, dep := range groups[0].Dependencies {
 			deps = append(deps, dep.ID)
 		}
+		return deps
 	}
 
-	return deps
+	return nil
 }
 
 // API response structures for NuGet.org JSON API
