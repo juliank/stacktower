@@ -90,13 +90,7 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 	g.AddNode(dag.Node{ID: rootID, Row: 0})
 
 	// Try to infer project name from filename
-	projectName := strings.TrimSuffix(path, ".csproj")
-	if idx := strings.LastIndexAny(projectName, "/\\"); idx >= 0 {
-		projectName = projectName[idx+1:]
-	}
-	if projectName == "" {
-		projectName = ""
-	}
+	projectName := strings.TrimSuffix(filepath.Base(path), ".csproj")
 
 	// Collect direct package dependencies
 	var directDeps []string
@@ -183,10 +177,10 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 		for _, itemGroup := range project.ItemGroups {
 			for _, pkg := range itemGroup.PackageReferences {
 				if pkg.Include != "" {
-					// If version is not specified in .csproj, try CPM
+					// If version is not specified in .csproj, try CPM (case-insensitive lookup)
 					version := pkg.Version
 					if version == "" && cpmVersions != nil {
-						if cpmVer, ok := cpmVersions[pkg.Include]; ok {
+						if cpmVer, ok := cpmVersions[strings.ToLower(pkg.Include)]; ok {
 							version = cpmVer
 						}
 					}
@@ -270,12 +264,12 @@ func parseCPMFile(path string) (map[string]string, error) {
 		return nil, fmt.Errorf("failed to parse Directory.Packages.props XML: %w", err)
 	}
 
-	// Build version map
+	// Build version map (case-insensitive keys since NuGet package names are case-insensitive)
 	versions := make(map[string]string)
 	for _, itemGroup := range project.ItemGroups {
 		for _, pkgVer := range itemGroup.PackageVersions {
 			if pkgVer.Include != "" && pkgVer.Version != "" {
-				versions[pkgVer.Include] = pkgVer.Version
+				versions[strings.ToLower(pkgVer.Include)] = pkgVer.Version
 			}
 		}
 	}

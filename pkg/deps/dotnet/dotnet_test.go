@@ -245,3 +245,166 @@ func TestCsProj_Parse_CPM(t *testing.T) {
 		t.Errorf("Root has %d children, want 2", len(children))
 	}
 }
+
+func TestCsProj_Parse_ProjectReference(t *testing.T) {
+	// Create a temporary directory structure with main project and referenced project
+	tmpDir := t.TempDir()
+
+	// Create referenced library project
+	libDir := filepath.Join(tmpDir, "MyLibrary")
+	if err := os.Mkdir(libDir, 0755); err != nil {
+		t.Fatalf("Failed to create library directory: %v", err)
+	}
+
+	libContent := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Serilog" Version="3.1.1" />
+  </ItemGroup>
+</Project>`
+
+	libPath := filepath.Join(libDir, "MyLibrary.csproj")
+	if err := os.WriteFile(libPath, []byte(libContent), 0644); err != nil {
+		t.Fatalf("Failed to write library .csproj: %v", err)
+	}
+
+	// Create main application project with ProjectReference
+	appDir := filepath.Join(tmpDir, "MyApp")
+	if err := os.Mkdir(appDir, 0755); err != nil {
+		t.Fatalf("Failed to create app directory: %v", err)
+	}
+
+	// Use Windows-style backslashes in the reference path to test normalization
+	appContent := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <ProjectReference Include="..\MyLibrary\MyLibrary.csproj" />
+  </ItemGroup>
+</Project>`
+
+	appPath := filepath.Join(appDir, "MyApp.csproj")
+	if err := os.WriteFile(appPath, []byte(appContent), 0644); err != nil {
+		t.Fatalf("Failed to write app .csproj: %v", err)
+	}
+
+	parser := &CsProj{}
+	result, err := parser.Parse(appPath, deps.Options{})
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if result.Type != "csproj" {
+		t.Errorf("result.Type = %q, want %q", result.Type, "csproj")
+	}
+
+	if result.RootPackage != "MyApp" {
+		t.Errorf("result.RootPackage = %q, want %q", result.RootPackage, "MyApp")
+	}
+
+	// Check that graph has expected nodes
+	if result.Graph == nil {
+		t.Fatal("result.Graph is nil")
+	}
+
+	g := result.Graph.(*dag.DAG)
+	// Expected nodes: __project__, Newtonsoft.Json, MyLibrary, Serilog
+	if g.NodeCount() != 4 {
+		t.Errorf("Graph has %d nodes, want 4", g.NodeCount())
+	}
+
+	// Check that MyLibrary project reference is a child of root
+	children := g.Children("__project__")
+	hasMyLibrary := false
+	hasNewtonsoft := false
+	for _, child := range children {
+		if child == "MyLibrary" {
+			hasMyLibrary = true
+		}
+		if child == "Newtonsoft.Json" {
+			hasNewtonsoft = true
+		}
+	}
+	if !hasMyLibrary {
+		t.Error("Expected MyLibrary as a child of __project__")
+	}
+	if !hasNewtonsoft {
+		t.Error("Expected Newtonsoft.Json as a child of __project__")
+	}
+
+	// Check that Serilog is a child of MyLibrary
+	libChildren := g.Children("MyLibrary")
+	hasSerilog := false
+	for _, child := range libChildren {
+		if child == "Serilog" {
+			hasSerilog = true
+		}
+	}
+	if !hasSerilog {
+		t.Error("Expected Serilog as a child of MyLibrary")
+	}
+}
+
+func TestCsProj_Parse_CPM_CaseInsensitive(t *testing.T) {
+	// Test that CPM lookup is case-insensitive (NuGet package names are case-insensitive)
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "MyApp")
+	if err := os.Mkdir(projectDir, 0755); err != nil {
+		t.Fatalf("Failed to create project directory: %v", err)
+	}
+
+	// Create Directory.Packages.props with lowercase package name
+	propsContent := `<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="newtonsoft.json" Version="13.0.3" />
+  </ItemGroup>
+</Project>`
+
+	propsPath := filepath.Join(tmpDir, "Directory.Packages.props")
+	if err := os.WriteFile(propsPath, []byte(propsContent), 0644); err != nil {
+		t.Fatalf("Failed to write Directory.Packages.props: %v", err)
+	}
+
+	// Create .csproj with PascalCase package name
+	csprojContent := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" />
+  </ItemGroup>
+</Project>`
+
+	csprojPath := filepath.Join(projectDir, "MyApp.csproj")
+	if err := os.WriteFile(csprojPath, []byte(csprojContent), 0644); err != nil {
+		t.Fatalf("Failed to write .csproj: %v", err)
+	}
+
+	parser := &CsProj{}
+	result, err := parser.Parse(csprojPath, deps.Options{})
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	// Verify the version was resolved from CPM despite case mismatch
+	g := result.Graph.(*dag.DAG)
+	node, ok := g.Node("Newtonsoft.Json")
+	if !ok || node == nil {
+		t.Fatal("Expected Newtonsoft.Json node to exist")
+	}
+
+	version, ok := node.Meta["version"]
+	if !ok {
+		t.Fatal("Expected version metadata on Newtonsoft.Json node")
+	}
+	if version != "13.0.3" {
+		t.Errorf("Newtonsoft.Json version = %q, want %q", version, "13.0.3")
+	}
+}
