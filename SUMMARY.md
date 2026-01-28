@@ -5,7 +5,7 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
 ## Summary Statistics
 
 - **10 files changed, 1500+ lines added** (all new code, minimal deletions)
-- **15 commits total**
+- **16 commits total**
 - **Framework targeting accuracy improvement completed**
 
 ## Changed Files
@@ -85,14 +85,16 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
   - Transitive dependency resolution via NuGet API
   - Calls opts.WithDefaults() for proper logger initialization
 
-#### 8. pkg/deps/dotnet/dotnet_test.go (247 lines)
-- 8 unit tests covering all parsers:
+#### 8. pkg/deps/dotnet/dotnet_test.go (410 lines)
+- 10 unit tests covering all parsers:
   - Language registration
   - Resolver creation
   - Supports() method for both parsers
   - Parse() for packages.config
   - Parse() for .csproj (basic)
   - Parse() for .csproj with CPM
+  - Parse() for .csproj with ProjectReference
+  - Parse() for .csproj with case-insensitive CPM
 - All tests passing
 
 #### 9. pkg/deps/dotnet/doc.go (51 lines)
@@ -164,6 +166,12 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
     - Numeric version comparison within framework families
     - Correctly selects net6.0 over netstandard1.3 for accurate dependencies
     - Added 5 new comprehensive test cases
+
+16. `fix(dotnet): case-insensitive CPM version lookup`
+    - Fixed bug where CPM lookup failed on case mismatch
+    - Simplified project name extraction using filepath.Base()
+    - Removed dead code
+    - Added tests for ProjectReference and CPM case-insensitivity
 
 ## Features Implemented
 
@@ -252,7 +260,7 @@ go test ./pkg/integrations/nuget -v
 
 # .NET parser tests  
 go test ./pkg/deps/dotnet -v
-# All 8 tests pass:
+# All 10 tests pass:
 # - TestLanguage
 # - TestNewResolver
 # - TestPackagesConfig_Supports (3 test cases)
@@ -260,6 +268,8 @@ go test ./pkg/deps/dotnet -v
 # - TestPackagesConfig_Parse
 # - TestCsProj_Parse
 # - TestCsProj_Parse_CPM
+# - TestCsProj_Parse_ProjectReference
+# - TestCsProj_Parse_CPM_CaseInsensitive
 ```
 
 ### Build
@@ -425,9 +435,9 @@ go build -o bin/stacktower .
 ## Statistics
 
 - **Total lines added**: 1,500+
-- **Test coverage**: Comprehensive unit + integration tests (5 new test cases added)
+- **Test coverage**: Comprehensive unit + integration tests (10 parser tests, 8+ client tests)
 - **Documentation**: 110 lines across 2 doc.go files
-- **Commits**: 15 (all following conventional commits)
+- **Commits**: 16 (all following conventional commits)
 - **Time estimate**: ~5-6 hours total development + 3 hours testing/refinement
 - **Files created**: 10 new files, 1 modified existing file (parse.go)
 - **Files modified for improvements**: 2 files (client.go, client_test.go)
@@ -443,6 +453,4 @@ go build -o bin/stacktower .
 
 ---
 
-*Last updated: January 25, 2026*  
-*Branch: feature/nuget*  
-*Base: main*
+*Last updated: January 28, 2026*

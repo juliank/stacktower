@@ -424,13 +424,13 @@ These follow the same architecture and testing patterns.
 - Branch: `feature/nuget`
 - Base: `main`
 - Status: All features implemented, all tests passing, framework targeting improved, ready for PR
-- Commits: 15 (all follow conventional commits format)
+- Commits: 16 (all follow conventional commits format)
 - Files changed: 10 new files, 1 modified file (parse.go)
 - Lines added: 1500+ (including framework comparison improvements)
-- Last commit: "feat(nuget): improve framework targeting to prefer newest available"
+- Last commit: "fix(dotnet): case-insensitive CPM version lookup"
 
 ---
 
-*Updated: January 25, 2026*
+*Updated: January 28, 2026*
 *Purpose: AI agent context for continuing NuGet/.NET integration work*
 *Not intended for human consumption - see SUMMARY.md and TODO.md instead*
