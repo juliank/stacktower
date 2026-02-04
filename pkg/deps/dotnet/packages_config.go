@@ -65,10 +65,7 @@ func (p *PackagesConfig) Parse(path string, opts deps.Options) (*deps.ManifestRe
 	g.AddNode(dag.Node{ID: rootID, Row: 0})
 
 	// Collect direct dependencies
-	var directDeps []string
-	for _, pkg := range pkgConfig.Packages {
-		directDeps = append(directDeps, pkg.ID)
-	}
+	directDeps := collectPackageIDs(pkgConfig)
 
 	// If resolver is available, fetch transitive dependencies
 	if p.resolver != nil {
@@ -79,12 +76,7 @@ func (p *PackagesConfig) Parse(path string, opts deps.Options) (*deps.ManifestRe
 		}
 	} else {
 		// Without resolver, just add direct dependencies
-		for _, pkg := range pkgConfig.Packages {
-			// Create node with version metadata
-			meta := dag.Metadata{"version": pkg.Version}
-			g.AddNode(dag.Node{ID: pkg.ID, Meta: meta})
-			g.AddEdge(dag.Edge{From: rootID, To: pkg.ID})
-		}
+		addDirectPackages(g, pkgConfig, rootID)
 	}
 
 	return &deps.ManifestResult{
@@ -105,6 +97,23 @@ type packagesPackage struct {
 	ID              string `xml:"id,attr"`
 	Version         string `xml:"version,attr"`
 	TargetFramework string `xml:"targetFramework,attr"`
+}
+
+func collectPackageIDs(pkgConfig packagesConfigXML) []string {
+	var ids []string
+	for _, pkg := range pkgConfig.Packages {
+		ids = append(ids, pkg.ID)
+	}
+	return ids
+}
+
+func addDirectPackages(g *dag.DAG, pkgConfig packagesConfigXML, rootID string) {
+	for _, pkg := range pkgConfig.Packages {
+		// Create node with version metadata
+		meta := dag.Metadata{"version": pkg.Version}
+		g.AddNode(dag.Node{ID: pkg.ID, Meta: meta})
+		g.AddEdge(dag.Edge{From: rootID, To: pkg.ID})
+	}
 }
 
 // resolve fetches transitive dependencies for all direct dependencies.
