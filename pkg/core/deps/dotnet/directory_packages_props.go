@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/matzehuels/stacktower/pkg/dag"
-	"github.com/matzehuels/stacktower/pkg/deps"
+	"github.com/matzehuels/stacktower/pkg/core/dag"
+	"github.com/matzehuels/stacktower/pkg/core/deps"
 )
 
 // DirectoryPackagesProps parses Directory.Packages.props files (Central Package Management).

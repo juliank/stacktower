@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/matzehuels/stacktower/pkg/cache"
 	"github.com/matzehuels/stacktower/pkg/integrations"
 )
 
@@ -159,10 +160,7 @@ func TestClient_FetchPackage(t *testing.T) {
 
 // TestClient_FetchPackage_EmptyInput tests that empty package names are properly rejected.
 func TestClient_FetchPackage_EmptyInput(t *testing.T) {
-	client, err := NewClient(time.Hour)
-	if err != nil {
-		t.Fatalf("NewClient() failed: %v", err)
-	}
+	client := NewClient(cache.NewNullCache(), time.Hour)
 
 	tests := []struct {
 		name string
@@ -342,10 +340,7 @@ func TestExtractDependencies(t *testing.T) {
 
 // TestNewClient tests client creation.
 func TestNewClient(t *testing.T) {
-	client, err := NewClient(24 * time.Hour)
-	if err != nil {
-		t.Fatalf("NewClient() error = %v", err)
-	}
+	client := NewClient(cache.NewNullCache(), 24*time.Hour)
 	if client == nil {
 		t.Fatal("NewClient() returned nil client")
 	}
@@ -360,12 +355,9 @@ func TestNewClient(t *testing.T) {
 // testClient creates a test client with mock URLs for testing.
 func testClient(t *testing.T, baseURL, registrationURL, catalogURL string) *Client {
 	t.Helper()
-	cache, err := integrations.NewCache(time.Hour)
-	if err != nil {
-		t.Fatal(err)
-	}
+	backend := cache.NewNullCache()
 	return &Client{
-		Client:          integrations.NewClient(cache, nil),
+		Client:          integrations.NewClient(backend, "nuget:", time.Hour, nil),
 		baseURL:         baseURL,
 		registrationURL: registrationURL,
 	}

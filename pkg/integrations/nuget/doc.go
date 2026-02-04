@@ -7,10 +7,7 @@
 //
 // # Usage
 //
-//	client, err := nuget.NewClient(24 * time.Hour)
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
+//	client := nuget.NewClient(cache.NewNullCache(), 24*time.Hour)
 //
 //	pkg, err := client.FetchPackage(ctx, "Newtonsoft.Json", false)
 //	if err != nil {

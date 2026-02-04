@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/matzehuels/stacktower/pkg/dag"
-	"github.com/matzehuels/stacktower/pkg/deps"
+	"github.com/matzehuels/stacktower/pkg/cache"
+	"github.com/matzehuels/stacktower/pkg/core/dag"
+	"github.com/matzehuels/stacktower/pkg/core/deps"
 )
 
 func TestLanguage(t *testing.T) {
@@ -20,7 +21,7 @@ func TestLanguage(t *testing.T) {
 }
 
 func TestNewResolver(t *testing.T) {
-	resolver, err := Language.NewResolver(1 * time.Hour)
+	resolver, err := Language.NewResolver(cache.NewNullCache(), 1*time.Hour)
 	if err != nil {
 		t.Fatalf("NewResolver() error = %v", err)
 	}

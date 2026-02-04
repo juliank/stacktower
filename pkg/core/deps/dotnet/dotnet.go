@@ -4,7 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/matzehuels/stacktower/pkg/deps"
+	"github.com/matzehuels/stacktower/pkg/cache"
+	"github.com/matzehuels/stacktower/pkg/core/deps"
 	"github.com/matzehuels/stacktower/pkg/integrations/nuget"
 )
 
@@ -24,11 +25,8 @@ var Language = &deps.Language{
 	ManifestParsers: manifestParsers,
 }
 
-func newResolver(ttl time.Duration) (deps.Resolver, error) {
-	c, err := nuget.NewClient(ttl)
-	if err != nil {
-		return nil, err
-	}
+func newResolver(backend cache.Cache, ttl time.Duration) (deps.Resolver, error) {
+	c := nuget.NewClient(backend, ttl)
 	return deps.NewRegistry("nuget", fetcher{c}), nil
 }
 

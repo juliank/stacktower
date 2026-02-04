@@ -48,5 +48,5 @@
 // lowercase for API requests but preserve their original casing in results.
 //
 // [nuget]: github.com/matzehuels/stacktower/pkg/integrations/nuget
-// [deps.Language]: github.com/matzehuels/stacktower/pkg/deps.Language
+// [deps.Language]: github.com/matzehuels/stacktower/pkg/core/deps.Language
 package dotnet

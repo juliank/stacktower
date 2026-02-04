@@ -6,15 +6,14 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/matzehuels/stacktower/pkg/cache"
 )
 
 // TestClient_FetchPackage_Integration tests fetching a real package from NuGet.org.
 // Run with: go test -v -tags=integration ./pkg/integrations/nuget
 func TestClient_FetchPackage_Integration(t *testing.T) {
-	client, err := NewClient(1 * time.Hour)
-	if err != nil {
-		t.Fatalf("NewClient() error = %v", err)
-	}
+	client := NewClient(cache.NewNullCache(), 1*time.Hour)
 
 	// Test with a well-known package: Newtonsoft.Json
 	pkg, err := client.FetchPackage(context.Background(), "Newtonsoft.Json", false)

@@ -15,6 +15,7 @@ package languages
 
 import (
 	"github.com/matzehuels/stacktower/pkg/core/deps"
+	"github.com/matzehuels/stacktower/pkg/core/deps/dotnet"
 	"github.com/matzehuels/stacktower/pkg/core/deps/golang"
 	"github.com/matzehuels/stacktower/pkg/core/deps/java"
 	"github.com/matzehuels/stacktower/pkg/core/deps/javascript"
@@ -34,6 +35,7 @@ var All = []*deps.Language{
 	php.Language,
 	java.Language,
 	golang.Language,
+	dotnet.Language,
 }
 
 // Find returns the Language with the given name, or nil if not found.
