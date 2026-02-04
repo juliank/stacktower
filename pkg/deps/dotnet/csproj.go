@@ -93,6 +93,70 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 	projectName := strings.TrimSuffix(filepath.Base(path), ".csproj")
 
 	// Collect direct package dependencies
+	directDeps := collectDirectDeps(project)
+
+	// Process project references recursively
+	baseDir := filepath.Dir(path)
+	p.mergeProjectReferences(g, project, baseDir, rootID, opts)
+
+	// If resolver is available, fetch transitive dependencies
+	if p.resolver != nil {
+		var err error
+		resolvedGraph, err := p.resolve(context.Background(), directDeps, opts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve dependencies: %w", err)
+		}
+
+		// Merge project references into the resolved graph
+		for _, n := range g.Nodes() {
+			if n.ID != projectRoot {
+				resolvedGraph.AddNode(*n)
+			}
+		}
+		for _, e := range g.Edges() {
+			if e.From == projectRoot {
+				// Reconnect from root
+				resolvedGraph.AddEdge(dag.Edge{From: projectRoot, To: e.To})
+			} else {
+				resolvedGraph.AddEdge(e)
+			}
+		}
+
+		g = resolvedGraph
+	} else {
+		// Without resolver, just add direct dependencies
+		addDirectDependencies(g, project, cpmVersions, rootID)
+	}
+
+	return &deps.ManifestResult{
+		Graph:              g,
+		Type:               p.Type(),
+		IncludesTransitive: p.IncludesTransitive(),
+		RootPackage:        projectName,
+	}, nil
+}
+
+// XML structure for .csproj files
+type csprojXML struct {
+	XMLName    xml.Name          `xml:"Project"`
+	ItemGroups []csprojItemGroup `xml:"ItemGroup"`
+}
+
+type csprojItemGroup struct {
+	PackageReferences []csprojPackageReference `xml:"PackageReference"`
+	ProjectReferences []csprojProjectReference `xml:"ProjectReference"`
+}
+
+type csprojPackageReference struct {
+	Include string `xml:"Include,attr"`
+	Version string `xml:"Version,attr"`
+}
+
+type csprojProjectReference struct {
+	Include string `xml:"Include,attr"`
+}
+
+func collectDirectDeps(project csprojXML) []string {
 	var directDeps []string
 	for _, itemGroup := range project.ItemGroups {
 		for _, pkg := range itemGroup.PackageReferences {
@@ -101,9 +165,10 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 			}
 		}
 	}
+	return directDeps
+}
 
-	// Process project references recursively
-	baseDir := filepath.Dir(path)
+func (p *CsProj) mergeProjectReferences(g *dag.DAG, project csprojXML, baseDir, rootID string, opts deps.Options) {
 	for _, itemGroup := range project.ItemGroups {
 		for _, proj := range itemGroup.ProjectReferences {
 			if proj.Include == "" {
@@ -147,82 +212,32 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 			}
 		}
 	}
+}
 
-	// If resolver is available, fetch transitive dependencies
-	if p.resolver != nil {
-		var err error
-		resolvedGraph, err := p.resolve(context.Background(), directDeps, opts)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve dependencies: %w", err)
-		}
-
-		// Merge project references into the resolved graph
-		for _, n := range g.Nodes() {
-			if n.ID != projectRoot {
-				resolvedGraph.AddNode(*n)
+func addDirectDependencies(g *dag.DAG, project csprojXML, cpmVersions map[string]string, rootID string) {
+	for _, itemGroup := range project.ItemGroups {
+		for _, pkg := range itemGroup.PackageReferences {
+			if pkg.Include == "" {
+				continue
 			}
-		}
-		for _, e := range g.Edges() {
-			if e.From == projectRoot {
-				// Reconnect from root
-				resolvedGraph.AddEdge(dag.Edge{From: projectRoot, To: e.To})
-			} else {
-				resolvedGraph.AddEdge(e)
-			}
-		}
 
-		g = resolvedGraph
-	} else {
-		// Without resolver, just add direct dependencies
-		for _, itemGroup := range project.ItemGroups {
-			for _, pkg := range itemGroup.PackageReferences {
-				if pkg.Include != "" {
-					// If version is not specified in .csproj, try CPM (case-insensitive lookup)
-					version := pkg.Version
-					if version == "" && cpmVersions != nil {
-						if cpmVer, ok := cpmVersions[strings.ToLower(pkg.Include)]; ok {
-							version = cpmVer
-						}
-					}
-
-					// Create node with version metadata if available
-					meta := dag.Metadata{}
-					if version != "" {
-						meta["version"] = version
-					}
-					g.AddNode(dag.Node{ID: pkg.Include, Meta: meta})
-					g.AddEdge(dag.Edge{From: rootID, To: pkg.Include})
+			// If version is not specified in .csproj, try CPM (case-insensitive lookup)
+			version := pkg.Version
+			if version == "" && cpmVersions != nil {
+				if cpmVer, ok := cpmVersions[strings.ToLower(pkg.Include)]; ok {
+					version = cpmVer
 				}
 			}
+
+			// Create node with version metadata if available
+			meta := dag.Metadata{}
+			if version != "" {
+				meta["version"] = version
+			}
+			g.AddNode(dag.Node{ID: pkg.Include, Meta: meta})
+			g.AddEdge(dag.Edge{From: rootID, To: pkg.Include})
 		}
 	}
-
-	return &deps.ManifestResult{
-		Graph:              g,
-		Type:               p.Type(),
-		IncludesTransitive: p.IncludesTransitive(),
-		RootPackage:        projectName,
-	}, nil
-}
-
-// XML structure for .csproj files
-type csprojXML struct {
-	XMLName    xml.Name          `xml:"Project"`
-	ItemGroups []csprojItemGroup `xml:"ItemGroup"`
-}
-
-type csprojItemGroup struct {
-	PackageReferences []csprojPackageReference `xml:"PackageReference"`
-	ProjectReferences []csprojProjectReference `xml:"ProjectReference"`
-}
-
-type csprojPackageReference struct {
-	Include string `xml:"Include,attr"`
-	Version string `xml:"Version,attr"`
-}
-
-type csprojProjectReference struct {
-	Include string `xml:"Include,attr"`
 }
 
 // loadCPMVersions searches for Directory.Packages.props in parent directories
