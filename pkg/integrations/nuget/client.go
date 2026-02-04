@@ -12,119 +12,6 @@ import (
 	"github.com/matzehuels/stacktower/pkg/integrations"
 )
 
-// frameworkRegex extracts framework family and version from target framework strings.
-// Captures: family (net/netstandard/netcoreapp) and version (digits and periods).
-// Examples: "net6.0" → ("net", "6.0"), "netstandard2.1" → ("netstandard", "2.1")
-var frameworkRegex = regexp.MustCompile(`(?i)^(net)(standard|coreapp)?(\d+(?:\.\d+)*)`)
-
-// targetFramework represents a parsed .NET target framework.
-type targetFramework struct {
-	family  string // "net", "netstandard", "netcoreapp", "netframework"
-	version string // e.g., "6.0", "2.1", "3.1", "481"
-	raw     string // original string for debugging
-}
-
-// frameworkPriority returns a numeric priority for framework families.
-// Higher values represent newer/preferred frameworks.
-func frameworkPriority(family string) int {
-	switch family {
-	case "net":
-		return 300 // Modern .NET (net5.0+)
-	case "netcoreapp":
-		return 200 // .NET Core
-	case "netstandard":
-		return 100 // .NET Standard
-	case "netframework":
-		return 10 // Legacy .NET Framework (net481, net48, etc.)
-	default:
-		return 0 // Unknown
-	}
-}
-
-// parseTargetFramework parses a target framework string into its components.
-// Returns nil if the string doesn't match a recognized .NET framework pattern.
-func parseTargetFramework(tf string) *targetFramework {
-	tf = strings.ToLower(strings.TrimSpace(tf))
-	if tf == "" || tf == "any" {
-		return nil
-	}
-
-	matches := frameworkRegex.FindStringSubmatch(tf)
-	if len(matches) < 4 {
-		return nil
-	}
-
-	family := "net"
-	version := matches[3]
-
-	if matches[2] != "" {
-		family = "net" + matches[2] // "netstandard" or "netcoreapp"
-	} else if version != "" && !strings.Contains(version, ".") {
-		// Legacy .NET Framework: net481, net48, net472 (no period in version)
-		family = "netframework"
-	}
-	// else: Modern .NET with period: net6.0, net8.0
-
-	return &targetFramework{
-		family:  family,
-		version: matches[3],
-		raw:     tf,
-	}
-}
-
-// compareVersions compares two version strings numerically.
-// Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal
-// Handles multi-part versions like "6.0", "2.1.1", etc.
-func compareVersions(v1, v2 string) int {
-	parts1 := strings.Split(v1, ".")
-	parts2 := strings.Split(v2, ".")
-
-	maxLen := len(parts1)
-	if len(parts2) > maxLen {
-		maxLen = len(parts2)
-	}
-
-	for i := 0; i < maxLen; i++ {
-		var n1, n2 int
-		if i < len(parts1) {
-			fmt.Sscanf(parts1[i], "%d", &n1)
-		}
-		if i < len(parts2) {
-			fmt.Sscanf(parts2[i], "%d", &n2)
-		}
-		if n1 > n2 {
-			return 1
-		}
-		if n1 < n2 {
-			return -1
-		}
-	}
-	return 0
-}
-
-// isNewerFramework returns true if tf1 is newer/more preferred than tf2.
-// Comparison logic:
-//  1. Compare family priority (modern .NET > .NET Core > .NET Standard)
-//  2. If same family, compare version numbers
-func isNewerFramework(tf1, tf2 *targetFramework) bool {
-	if tf1 == nil {
-		return false
-	}
-	if tf2 == nil {
-		return true
-	}
-
-	p1 := frameworkPriority(tf1.family)
-	p2 := frameworkPriority(tf2.family)
-
-	if p1 != p2 {
-		return p1 > p2
-	}
-
-	// Same family, compare versions
-	return compareVersions(tf1.version, tf2.version) > 0
-}
-
 // PackageInfo holds metadata for a .NET package from NuGet.org.
 //
 // Package names in NuGet are case-insensitive but preserve their original casing.
@@ -329,6 +216,119 @@ func dependenciesFromGroup(group dependencyGroup) []string {
 		deps = append(deps, dep.ID)
 	}
 	return deps
+}
+
+// frameworkRegex extracts framework family and version from target framework strings.
+// Captures: family (net/netstandard/netcoreapp) and version (digits and periods).
+// Examples: "net6.0" → ("net", "6.0"), "netstandard2.1" → ("netstandard", "2.1")
+var frameworkRegex = regexp.MustCompile(`(?i)^(net)(standard|coreapp)?(\d+(?:\.\d+)*)`)
+
+// targetFramework represents a parsed .NET target framework.
+type targetFramework struct {
+	family  string // "net", "netstandard", "netcoreapp", "netframework"
+	version string // e.g., "6.0", "2.1", "3.1", "481"
+	raw     string // original string for debugging
+}
+
+// frameworkPriority returns a numeric priority for framework families.
+// Higher values represent newer/preferred frameworks.
+func frameworkPriority(family string) int {
+	switch family {
+	case "net":
+		return 300 // Modern .NET (net5.0+)
+	case "netcoreapp":
+		return 200 // .NET Core
+	case "netstandard":
+		return 100 // .NET Standard
+	case "netframework":
+		return 10 // Legacy .NET Framework (net481, net48, etc.)
+	default:
+		return 0 // Unknown
+	}
+}
+
+// parseTargetFramework parses a target framework string into its components.
+// Returns nil if the string doesn't match a recognized .NET framework pattern.
+func parseTargetFramework(tf string) *targetFramework {
+	tf = strings.ToLower(strings.TrimSpace(tf))
+	if tf == "" || tf == "any" {
+		return nil
+	}
+
+	matches := frameworkRegex.FindStringSubmatch(tf)
+	if len(matches) < 4 {
+		return nil
+	}
+
+	family := "net"
+	version := matches[3]
+
+	if matches[2] != "" {
+		family = "net" + matches[2] // "netstandard" or "netcoreapp"
+	} else if version != "" && !strings.Contains(version, ".") {
+		// Legacy .NET Framework: net481, net48, net472 (no period in version)
+		family = "netframework"
+	}
+	// else: Modern .NET with period: net6.0, net8.0
+
+	return &targetFramework{
+		family:  family,
+		version: matches[3],
+		raw:     tf,
+	}
+}
+
+// compareVersions compares two version strings numerically.
+// Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal
+// Handles multi-part versions like "6.0", "2.1.1", etc.
+func compareVersions(v1, v2 string) int {
+	parts1 := strings.Split(v1, ".")
+	parts2 := strings.Split(v2, ".")
+
+	maxLen := len(parts1)
+	if len(parts2) > maxLen {
+		maxLen = len(parts2)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var n1, n2 int
+		if i < len(parts1) {
+			fmt.Sscanf(parts1[i], "%d", &n1)
+		}
+		if i < len(parts2) {
+			fmt.Sscanf(parts2[i], "%d", &n2)
+		}
+		if n1 > n2 {
+			return 1
+		}
+		if n1 < n2 {
+			return -1
+		}
+	}
+	return 0
+}
+
+// isNewerFramework returns true if tf1 is newer/more preferred than tf2.
+// Comparison logic:
+//  1. Compare family priority (modern .NET > .NET Core > .NET Standard)
+//  2. If same family, compare version numbers
+func isNewerFramework(tf1, tf2 *targetFramework) bool {
+	if tf1 == nil {
+		return false
+	}
+	if tf2 == nil {
+		return true
+	}
+
+	p1 := frameworkPriority(tf1.family)
+	p2 := frameworkPriority(tf2.family)
+
+	if p1 != p2 {
+		return p1 > p2
+	}
+
+	// Same family, compare versions
+	return compareVersions(tf1.version, tf2.version) > 0
 }
 
 // API response structures for NuGet.org JSON API

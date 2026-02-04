@@ -61,8 +61,7 @@ func (p *PackagesConfig) Parse(path string, opts deps.Options) (*deps.ManifestRe
 	g := dag.New(nil)
 
 	// Add root node (project) - we use a placeholder since packages.config doesn't contain project name
-	rootID := projectRoot
-	g.AddNode(dag.Node{ID: rootID, Row: 0})
+	g.AddNode(dag.Node{ID: projectRoot, Row: 0})
 
 	// Collect direct dependencies
 	directDeps := collectPackageIDs(pkgConfig)
@@ -76,7 +75,7 @@ func (p *PackagesConfig) Parse(path string, opts deps.Options) (*deps.ManifestRe
 		}
 	} else {
 		// Without resolver, just add direct dependencies
-		addDirectPackages(g, pkgConfig, rootID)
+		addDirectPackages(g, pkgConfig)
 	}
 
 	return &deps.ManifestResult{
@@ -107,12 +106,12 @@ func collectPackageIDs(pkgConfig packagesConfigXML) []string {
 	return ids
 }
 
-func addDirectPackages(g *dag.DAG, pkgConfig packagesConfigXML, rootID string) {
+func addDirectPackages(g *dag.DAG, pkgConfig packagesConfigXML) {
 	for _, pkg := range pkgConfig.Packages {
 		// Create node with version metadata
 		meta := dag.Metadata{"version": pkg.Version}
 		g.AddNode(dag.Node{ID: pkg.ID, Meta: meta})
-		g.AddEdge(dag.Edge{From: rootID, To: pkg.ID})
+		g.AddEdge(dag.Edge{From: projectRoot, To: pkg.ID})
 	}
 }
 
