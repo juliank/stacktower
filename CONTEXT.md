@@ -186,7 +186,8 @@ server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *htt
 }))
 defer server.Close()
 
-client := nuget.NewClient(http.DefaultClient, cache, server.URL) // configurable base URL
+client := testClient(t, server.URL, server.URL, server.URL) // configurable URLs for testing
+// Production: client := nuget.NewClient(cache.NewNullCache(), 24*time.Hour)
 ```
 
 **Test naming**: `Test<Type>_<Method>[_<Scenario>]`
@@ -233,9 +234,9 @@ client := nuget.NewClient(http.DefaultClient, cache, server.URL) // configurable
 - `pkg/httputil`: HTTP caching implementation (used by integrations.Client)
 
 **HTTP Client**:
-- Uses `*http.Client` passed to `NewClient()`
+- Uses `cache.Cache` backend passed to `NewClient(backend, cacheTTL)`
 - Wrapped with `integrations.Client` for caching/retries
-- Cache: `~/.cache/stacktower/` with 24-hour TTL
+- Cache backend typically provided by language infrastructure
 
 ## Environment Variables
 
@@ -255,14 +256,14 @@ make check                                       # CI checks (fmt, lint, test, v
 
 ## Known Issues and Limitations
 
-1. **Framework Targeting Accuracy** (documented in TODO.md):
-   - Current algorithm prioritizes framework-agnostic targets (netstandard) even when modern targets (net6.0) have fewer dependencies
-   - Causes packages like Newtonsoft.Json to show legacy dependencies they don't need in modern apps
-   - Proposed solutions: (a) prefer newest version with minimal deps, or (b) derive target framework from root app
-
-2. **No .sln Support Yet** (idea in TODO.md):
+1. **No .sln Support Yet** (idea in TODO.md):
    - Must target individual .csproj files, not solution files
    - Multi-project solutions require running parse on each project separately
+
+2. **Framework Targeting** (completed, see TODO.md):
+   - ✅ Sophisticated framework comparison implemented (January 25, 2026)
+   - Prioritizes modern .NET frameworks over legacy ones
+   - Future consideration: derive target framework from root app's .csproj
 
 3. **No project.json or nuget.config Support**:
    - Only handles packages.config and SDK-style .csproj

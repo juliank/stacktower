@@ -5,7 +5,7 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
 ## Summary Statistics
 
 - **15 files changed, 2045 lines added** (all new code, minimal deletions)
-- **25 commits total**
+- **26 commits total** (including upstream merge)
 - **Framework targeting accuracy improvement completed**
 
 ## Changed Files
@@ -217,6 +217,12 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
 
 24. `feat(dotnet): use parent folder as root package id`
    - Root package uses containing folder for CPM and packages.config
+
+25. `chore: Merge upstream changes into .NET/NuGet fork`
+   - Adapted to upstream cache architecture refactoring
+   - Updated nuget.Client to accept cache.Cache backend parameter
+   - Modified all client instantiations in tests
+   - Aligned with established integration patterns
 
 ## Features Implemented
 
