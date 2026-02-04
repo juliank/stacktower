@@ -28,6 +28,7 @@
 //
 //   - .csproj: SDK-style projects with PackageReference and ProjectReference (IncludesTransitive: true with resolver)
 //   - packages.config: Legacy format with package elements (IncludesTransitive: true with resolver)
+//   - Directory.Packages.props: CPM version list treated as direct dependencies (IncludesTransitive: true with resolver)
 //
 // # Central Package Management
 //

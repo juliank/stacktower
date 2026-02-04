@@ -277,46 +277,6 @@ func loadCPMVersions(csprojPath string) (map[string]string, error) {
 	return nil, fmt.Errorf("Directory.Packages.props not found")
 }
 
-// parseCPMFile reads and parses a Directory.Packages.props file.
-func parseCPMFile(path string) (map[string]string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read Directory.Packages.props: %w", err)
-	}
-
-	var project cpmXML
-	if err := xml.Unmarshal(data, &project); err != nil {
-		return nil, fmt.Errorf("failed to parse Directory.Packages.props XML: %w", err)
-	}
-
-	// Build version map (case-insensitive keys since NuGet package names are case-insensitive)
-	versions := make(map[string]string)
-	for _, itemGroup := range project.ItemGroups {
-		for _, pkgVer := range itemGroup.PackageVersions {
-			if pkgVer.Include != "" && pkgVer.Version != "" {
-				versions[strings.ToLower(pkgVer.Include)] = pkgVer.Version
-			}
-		}
-	}
-
-	return versions, nil
-}
-
-// XML structure for Directory.Packages.props
-type cpmXML struct {
-	XMLName    xml.Name       `xml:"Project"`
-	ItemGroups []cpmItemGroup `xml:"ItemGroup"`
-}
-
-type cpmItemGroup struct {
-	PackageVersions []cpmPackageVersion `xml:"PackageVersion"`
-}
-
-type cpmPackageVersion struct {
-	Include string `xml:"Include,attr"`
-	Version string `xml:"Version,attr"`
-}
-
 // resolve fetches transitive dependencies for all direct dependencies.
 // It merges the sub-graphs from each package into a single graph.
 func (p *CsProj) resolve(ctx context.Context, pkgs []string, opts deps.Options) (*dag.DAG, error) {

@@ -13,10 +13,11 @@ import (
 var Language = &deps.Language{
 	Name:            "dotnet",
 	DefaultRegistry: "nuget",
-	ManifestTypes:   []string{"packages", "csproj"},
+	ManifestTypes:   []string{"packages", "csproj", "cpm"},
 	ManifestAliases: map[string]string{
-		"packages.config": "packages",
-		"*.csproj":        "csproj",
+		"packages.config":          "packages",
+		"*.csproj":                 "csproj",
+		"directory.packages.props": "cpm",
 	},
 	NewResolver:     newResolver,
 	NewManifest:     newManifest,
@@ -56,6 +57,8 @@ func newManifest(name string, res deps.Resolver) deps.ManifestParser {
 		return &PackagesConfig{resolver: res}
 	case "csproj":
 		return &CsProj{resolver: res}
+	case "cpm":
+		return &DirectoryPackagesProps{resolver: res}
 	default:
 		return nil
 	}
@@ -65,5 +68,6 @@ func manifestParsers(res deps.Resolver) []deps.ManifestParser {
 	return []deps.ManifestParser{
 		&PackagesConfig{resolver: res},
 		&CsProj{resolver: res},
+		&DirectoryPackagesProps{resolver: res},
 	}
 }

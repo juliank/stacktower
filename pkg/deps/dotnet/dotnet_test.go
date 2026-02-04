@@ -77,6 +77,29 @@ func TestCsProj_Supports(t *testing.T) {
 	}
 }
 
+func TestDirectoryPackagesProps_Supports(t *testing.T) {
+	parser := &DirectoryPackagesProps{}
+
+	tests := []struct {
+		name     string
+		filename string
+		want     bool
+	}{
+		{"exact match", "Directory.Packages.props", true},
+		{"lowercase match", "directory.packages.props", true},
+		{"wrong file", "packages.config", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parser.Supports(tt.filename)
+			if got != tt.want {
+				t.Errorf("Supports(%q) = %v, want %v", tt.filename, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestPackagesConfig_Parse(t *testing.T) {
 	// Create a temporary packages.config file
 	content := `<?xml version="1.0" encoding="utf-8"?>
@@ -169,6 +192,56 @@ func TestCsProj_Parse(t *testing.T) {
 	}
 
 	// Check edges exist - verify root has 2 children
+	children := g.Children("__project__")
+	if len(children) != 2 {
+		t.Errorf("Root has %d children, want 2", len(children))
+	}
+}
+
+func TestDirectoryPackagesProps_Parse(t *testing.T) {
+	content := `<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="8.0.0" />
+  </ItemGroup>
+</Project>`
+
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "Directory.Packages.props")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	parser := &DirectoryPackagesProps{}
+	result, err := parser.Parse(path, deps.Options{})
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if result.Type != "cpm" {
+		t.Errorf("result.Type = %q, want %q", result.Type, "cpm")
+	}
+
+	if result.IncludesTransitive {
+		t.Error("result.IncludesTransitive = true, want false")
+	}
+
+	if result.RootPackage != "" {
+		t.Errorf("result.RootPackage = %q, want empty", result.RootPackage)
+	}
+
+	if result.Graph == nil {
+		t.Fatal("result.Graph is nil")
+	}
+
+	g := result.Graph.(*dag.DAG)
+	if g.NodeCount() != 3 { // root + 2 packages
+		t.Errorf("Graph has %d nodes, want 3", g.NodeCount())
+	}
+
 	children := g.Children("__project__")
 	if len(children) != 2 {
 		t.Errorf("Root has %d children, want 2", len(children))
