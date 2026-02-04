@@ -90,7 +90,7 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 	g.AddNode(dag.Node{ID: rootID, Row: 0})
 
 	// Try to infer project name from filename
-	projectName := strings.TrimSuffix(filepath.Base(path), ".csproj")
+	projectName := projectNameFromPath(path)
 
 	// Collect direct package dependencies
 	directDeps := collectDirectDeps(project)
@@ -168,6 +168,10 @@ func collectDirectDeps(project csprojXML) []string {
 	return directDeps
 }
 
+func projectNameFromPath(path string) string {
+	return strings.TrimSuffix(filepath.Base(path), ".csproj")
+}
+
 func (p *CsProj) mergeProjectReferences(g *dag.DAG, project csprojXML, baseDir, rootID string, opts deps.Options) {
 	for _, itemGroup := range project.ItemGroups {
 		for _, proj := range itemGroup.ProjectReferences {
@@ -188,8 +192,7 @@ func (p *CsProj) mergeProjectReferences(g *dag.DAG, project csprojXML, baseDir, 
 			}
 
 			// Extract project name for the node
-			projName := filepath.Base(referencedPath)
-			projName = strings.TrimSuffix(projName, ".csproj")
+			projName := projectNameFromPath(referencedPath)
 
 			// Add project node and edge
 			g.AddNode(dag.Node{ID: projName})
