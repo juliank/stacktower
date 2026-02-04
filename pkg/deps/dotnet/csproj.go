@@ -136,26 +136,6 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 	}, nil
 }
 
-// XML structure for .csproj files
-type csprojXML struct {
-	XMLName    xml.Name          `xml:"Project"`
-	ItemGroups []csprojItemGroup `xml:"ItemGroup"`
-}
-
-type csprojItemGroup struct {
-	PackageReferences []csprojPackageReference `xml:"PackageReference"`
-	ProjectReferences []csprojProjectReference `xml:"ProjectReference"`
-}
-
-type csprojPackageReference struct {
-	Include string `xml:"Include,attr"`
-	Version string `xml:"Version,attr"`
-}
-
-type csprojProjectReference struct {
-	Include string `xml:"Include,attr"`
-}
-
 func collectDirectDeps(project csprojXML) []string {
 	var directDeps []string
 	for _, itemGroup := range project.ItemGroups {
@@ -241,6 +221,26 @@ func addDirectDependencies(g *dag.DAG, project csprojXML, cpmVersions map[string
 			g.AddEdge(dag.Edge{From: rootID, To: pkg.Include})
 		}
 	}
+}
+
+// XML structure for .csproj files
+type csprojXML struct {
+	XMLName    xml.Name          `xml:"Project"`
+	ItemGroups []csprojItemGroup `xml:"ItemGroup"`
+}
+
+type csprojItemGroup struct {
+	PackageReferences []csprojPackageReference `xml:"PackageReference"`
+	ProjectReferences []csprojProjectReference `xml:"ProjectReference"`
+}
+
+type csprojPackageReference struct {
+	Include string `xml:"Include,attr"`
+	Version string `xml:"Version,attr"`
+}
+
+type csprojProjectReference struct {
+	Include string `xml:"Include,attr"`
 }
 
 // loadCPMVersions searches for Directory.Packages.props in parent directories
