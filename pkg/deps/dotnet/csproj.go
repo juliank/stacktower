@@ -86,7 +86,7 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 	g := dag.New(nil)
 
 	// Add root node (project) - use placeholder
-	rootID := "__project__"
+	rootID := projectRoot
 	g.AddNode(dag.Node{ID: rootID, Row: 0})
 
 	// Try to infer project name from filename
@@ -133,12 +133,12 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 			// Merge the referenced project's dependencies into our graph
 			refGraph := refResult.Graph.(*dag.DAG)
 			for _, n := range refGraph.Nodes() {
-				if n.ID != "__project__" {
+				if n.ID != projectRoot {
 					g.AddNode(*n)
 				}
 			}
 			for _, e := range refGraph.Edges() {
-				if e.From == "__project__" {
+				if e.From == projectRoot {
 					// Redirect edges from referenced project's root to the project node
 					g.AddEdge(dag.Edge{From: projName, To: e.To})
 				} else {
@@ -158,14 +158,14 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 
 		// Merge project references into the resolved graph
 		for _, n := range g.Nodes() {
-			if n.ID != "__project__" {
+			if n.ID != projectRoot {
 				resolvedGraph.AddNode(*n)
 			}
 		}
 		for _, e := range g.Edges() {
-			if e.From == "__project__" {
+			if e.From == projectRoot {
 				// Reconnect from root
-				resolvedGraph.AddEdge(dag.Edge{From: "__project__", To: e.To})
+				resolvedGraph.AddEdge(dag.Edge{From: projectRoot, To: e.To})
 			} else {
 				resolvedGraph.AddEdge(e)
 			}
@@ -296,14 +296,14 @@ type cpmPackageVersion struct {
 // It merges the sub-graphs from each package into a single graph.
 func (p *CsProj) resolve(ctx context.Context, pkgs []string, opts deps.Options) (*dag.DAG, error) {
 	merged := dag.New(nil)
-	_ = merged.AddNode(dag.Node{ID: "__project__", Meta: dag.Metadata{"virtual": true}})
+	_ = merged.AddNode(dag.Node{ID: projectRoot, Meta: dag.Metadata{"virtual": true}})
 
 	for _, pkg := range pkgs {
 		g, err := p.resolver.Resolve(ctx, pkg, opts)
 		if err != nil {
 			opts.Logger("resolve failed: %s: %v", pkg, err)
 			_ = merged.AddNode(dag.Node{ID: pkg})
-			_ = merged.AddEdge(dag.Edge{From: "__project__", To: pkg})
+			_ = merged.AddEdge(dag.Edge{From: projectRoot, To: pkg})
 			continue
 		}
 		for _, n := range g.Nodes() {
@@ -312,7 +312,7 @@ func (p *CsProj) resolve(ctx context.Context, pkgs []string, opts deps.Options) 
 		for _, e := range g.Edges() {
 			_ = merged.AddEdge(dag.Edge{From: e.From, To: e.To})
 		}
-		_ = merged.AddEdge(dag.Edge{From: "__project__", To: pkg})
+		_ = merged.AddEdge(dag.Edge{From: projectRoot, To: pkg})
 	}
 
 	return merged, nil

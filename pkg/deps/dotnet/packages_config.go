@@ -61,7 +61,7 @@ func (p *PackagesConfig) Parse(path string, opts deps.Options) (*deps.ManifestRe
 	g := dag.New(nil)
 
 	// Add root node (project) - we use a placeholder since packages.config doesn't contain project name
-	rootID := "__project__"
+	rootID := projectRoot
 	g.AddNode(dag.Node{ID: rootID, Row: 0})
 
 	// Collect direct dependencies
@@ -111,14 +111,14 @@ type packagesPackage struct {
 // It merges the sub-graphs from each package into a single graph.
 func (p *PackagesConfig) resolve(ctx context.Context, pkgs []string, opts deps.Options) (*dag.DAG, error) {
 	merged := dag.New(nil)
-	_ = merged.AddNode(dag.Node{ID: "__project__", Meta: dag.Metadata{"virtual": true}})
+	_ = merged.AddNode(dag.Node{ID: projectRoot, Meta: dag.Metadata{"virtual": true}})
 
 	for _, pkg := range pkgs {
 		g, err := p.resolver.Resolve(ctx, pkg, opts)
 		if err != nil {
 			opts.Logger("resolve failed: %s: %v", pkg, err)
 			_ = merged.AddNode(dag.Node{ID: pkg})
-			_ = merged.AddEdge(dag.Edge{From: "__project__", To: pkg})
+			_ = merged.AddEdge(dag.Edge{From: projectRoot, To: pkg})
 			continue
 		}
 		for _, n := range g.Nodes() {
@@ -127,7 +127,7 @@ func (p *PackagesConfig) resolve(ctx context.Context, pkgs []string, opts deps.O
 		for _, e := range g.Edges() {
 			_ = merged.AddEdge(dag.Edge{From: e.From, To: e.To})
 		}
-		_ = merged.AddEdge(dag.Edge{From: "__project__", To: pkg})
+		_ = merged.AddEdge(dag.Edge{From: projectRoot, To: pkg})
 	}
 
 	return merged, nil

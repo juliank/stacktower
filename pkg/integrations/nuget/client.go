@@ -287,11 +287,7 @@ func extractDependencies(groups []dependencyGroup) []string {
 	// These dependencies apply to all target frameworks and are the safest choice
 	for _, group := range groups {
 		if group.TargetFramework == "" || group.TargetFramework == "any" {
-			var deps []string
-			for _, dep := range group.Dependencies {
-				deps = append(deps, dep.ID)
-			}
-			return deps
+			return dependenciesFromGroup(group)
 		}
 	}
 
@@ -313,23 +309,26 @@ func extractDependencies(groups []dependencyGroup) []string {
 
 	// Return dependencies from the newest framework group
 	if newestGroup != nil {
-		var deps []string
-		for _, dep := range newestGroup.Dependencies {
-			deps = append(deps, dep.ID)
-		}
-		return deps
+		return dependenciesFromGroup(*newestGroup)
 	}
 
 	// Stage 3: Fallback to first available group if no frameworks were parseable
 	if len(groups) > 0 && len(groups[0].Dependencies) > 0 {
-		var deps []string
-		for _, dep := range groups[0].Dependencies {
-			deps = append(deps, dep.ID)
-		}
-		return deps
+		return dependenciesFromGroup(groups[0])
 	}
 
 	return nil
+}
+
+func dependenciesFromGroup(group dependencyGroup) []string {
+	if len(group.Dependencies) == 0 {
+		return nil
+	}
+	deps := make([]string, 0, len(group.Dependencies))
+	for _, dep := range group.Dependencies {
+		deps = append(deps, dep.ID)
+	}
+	return deps
 }
 
 // API response structures for NuGet.org JSON API
