@@ -82,7 +82,7 @@ func (p *PackagesConfig) Parse(path string, opts deps.Options) (*deps.ManifestRe
 		Graph:              g,
 		Type:               p.Type(),
 		IncludesTransitive: p.IncludesTransitive(),
-		RootPackage:        "", // packages.config doesn't include project name
+		RootPackage:        rootPackageFromPath(path),
 	}, nil
 }
 

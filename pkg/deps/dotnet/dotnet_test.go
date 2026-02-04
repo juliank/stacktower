@@ -128,6 +128,10 @@ func TestPackagesConfig_Parse(t *testing.T) {
 		t.Error("result.IncludesTransitive = true, want false")
 	}
 
+	if result.RootPackage != filepath.Base(tmpDir) {
+		t.Errorf("result.RootPackage = %q, want %q", result.RootPackage, filepath.Base(tmpDir))
+	}
+
 	// Check that graph has nodes
 	if result.Graph == nil {
 		t.Fatal("result.Graph is nil")
@@ -229,8 +233,8 @@ func TestDirectoryPackagesProps_Parse(t *testing.T) {
 		t.Error("result.IncludesTransitive = true, want false")
 	}
 
-	if result.RootPackage != "" {
-		t.Errorf("result.RootPackage = %q, want empty", result.RootPackage)
+	if result.RootPackage != filepath.Base(tmpDir) {
+		t.Errorf("result.RootPackage = %q, want %q", result.RootPackage, filepath.Base(tmpDir))
 	}
 
 	if result.Graph == nil {

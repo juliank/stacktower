@@ -59,7 +59,7 @@ func (p *DirectoryPackagesProps) Parse(path string, opts deps.Options) (*deps.Ma
 		Graph:              g,
 		Type:               p.Type(),
 		IncludesTransitive: p.IncludesTransitive(),
-		RootPackage:        "",
+		RootPackage:        rootPackageFromPath(path),
 	}, nil
 }
 
