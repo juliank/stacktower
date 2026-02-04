@@ -110,6 +110,10 @@ Minor technical improvements and issue fixes.
 
 - [ ] **Add examples directory**: Real-world example .csproj and packages.config files with expected outputs
 
+### Rendering
+
+- [ ] **Show package version in tower popups**: Include `meta.version` in hover tooltip rendering (SVG popup data)
+
 ### Minor Technical Debt
 
 - [ ] **Consistent error wrapping**: Review all error returns for consistent use of fmt.Errorf with context

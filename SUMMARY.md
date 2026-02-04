@@ -4,8 +4,8 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
 
 ## Summary Statistics
 
-- **10 files changed, 1500+ lines added** (all new code, minimal deletions)
-- **16 commits total**
+- **15 files changed, 2045 lines added** (all new code, minimal deletions)
+- **25 commits total**
 - **Framework targeting accuracy improvement completed**
 
 ## Changed Files
@@ -54,23 +54,25 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
 
 ### New Language Support Files (.NET)
 
-#### 5. pkg/deps/dotnet/dotnet.go (69 lines)
+#### 5. pkg/deps/dotnet/dotnet.go (73 lines)
 - Language definition connecting NuGet to stacktower
 - Registers resolver (NuGet API client)
 - Registers manifest parsers:
   - packages.config (legacy)
   - .csproj (modern SDK-style)
+   - Directory.Packages.props (CPM)
 - Follows patterns from JavaScript, Python, Ruby integrations
 
-#### 6. pkg/deps/dotnet/packages_config.go (134 lines)
+#### 6. pkg/deps/dotnet/packages_config.go (122 lines)
 - Parser for legacy packages.config XML format
 - Features:
   - Direct dependency extraction from XML
   - Transitive dependency resolution via NuGet API
   - Case-insensitive package name handling
   - Calls opts.WithDefaults() for proper logger initialization
+   - Root package defaults to containing folder name
 
-#### 7. pkg/deps/dotnet/csproj.go (325 lines)
+#### 7. pkg/deps/dotnet/csproj.go (284 lines)
 - Parser for modern SDK-style .csproj XML format
 - Features:
   - PackageReference parsing
@@ -85,8 +87,8 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
   - Transitive dependency resolution via NuGet API
   - Calls opts.WithDefaults() for proper logger initialization
 
-#### 8. pkg/deps/dotnet/dotnet_test.go (410 lines)
-- 10 unit tests covering all parsers:
+#### 8. pkg/deps/dotnet/dotnet_test.go (487 lines)
+- 12 unit tests covering all parsers:
   - Language registration
   - Resolver creation
   - Supports() method for both parsers
@@ -95,9 +97,11 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
   - Parse() for .csproj with CPM
   - Parse() for .csproj with ProjectReference
   - Parse() for .csproj with case-insensitive CPM
+   - Supports() for Directory.Packages.props
+   - Parse() for Directory.Packages.props
 - All tests passing
 
-#### 9. pkg/deps/dotnet/doc.go (51 lines)
+#### 9. pkg/deps/dotnet/doc.go (52 lines)
 - Package-level documentation matching python quality
 - Sections:
   - Overview with supported manifest types
@@ -107,9 +111,26 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
   - ProjectReference support details
   - Package name normalization
 
+#### 10. pkg/deps/dotnet/cpm.go (62 lines)
+- Shared CPM parsing helpers for Directory.Packages.props
+- XML structures and version list extraction
+
+#### 11. pkg/deps/dotnet/directory_packages_props.go (89 lines)
+- Parser for Directory.Packages.props CPM files
+- Supports direct parsing as a manifest
+
+#### 12. pkg/deps/dotnet/constants.go (3 lines)
+- Shared project root constant for .NET parsers
+
+#### 13. pkg/deps/dotnet/resolve.go (34 lines)
+- Shared transitive resolution helper used by .NET parsers
+
+#### 14. pkg/deps/dotnet/root_package.go (8 lines)
+- Helper to derive root package name from containing folder
+
 ### Integration Point
 
-#### 10. internal/cli/parse.go (2 lines)
+#### 15. internal/cli/parse.go (2 lines)
 - Registered dotnet.Language in CLI languages array
 - Enables `stacktower parse dotnet <path>` command
 
@@ -173,6 +194,30 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
     - Removed dead code
     - Added tests for ProjectReference and CPM case-insensitivity
 
+17. `refactor(dotnet): split csproj parsing into helpers`
+   - Extracted helper functions for direct deps and project references
+
+18. `refactor(dotnet): share transitive resolution helper`
+   - Deduplicated transitive resolution logic across parsers
+
+19. `refactor(dotnet): centralize csproj name parsing`
+   - Added helper for project name extraction
+
+20. `refactor(dotnet): reorder csproj type definitions`
+   - Moved XML types to keep parser flow readable
+
+21. `refactor(dotnet): simplify packages.config parsing`
+   - Extracted helper functions for direct deps
+
+22. `refactor(dotnet,nuget): finalize readability pass`
+   - CPM lookup helper and parser ordering improvements
+
+23. `feat(dotnet): add Directory.Packages.props parsing`
+   - Added CPM manifest parser and shared CPM XML parsing
+
+24. `feat(dotnet): use parent folder as root package id`
+   - Root package uses containing folder for CPM and packages.config
+
 ## Features Implemented
 
 ### NuGet API Integration
@@ -187,9 +232,11 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
 - ✅ packages.config (legacy format)
 - ✅ SDK-style .csproj (modern format)
 - ✅ Central Package Management (CPM)
+- ✅ Directory.Packages.props as a manifest entry point
 - ✅ ProjectReference support with recursive parsing
 - ✅ Transitive dependency resolution
 - ✅ Windows path normalization
+- ✅ Root package derived from containing folder (non-.csproj)
 
 ### Framework Targeting
 - ✅ Three-stage selection strategy
@@ -252,7 +299,7 @@ All 7 items from TODO.md completed:
 ```bash
 # NuGet integration tests
 go test ./pkg/integrations/nuget -v
-# All tests pass: 
+# All tests pass (full suite sometimes flakes on TestCache_Expiration):
 # - TestClient_FetchPackage (5 test cases)
 # - TestClient_FetchPackage_EmptyInput (3 test cases)
 # - TestExtractDependencies (4 test cases)
@@ -260,7 +307,7 @@ go test ./pkg/integrations/nuget -v
 
 # .NET parser tests  
 go test ./pkg/deps/dotnet -v
-# All 10 tests pass:
+# All 12 tests pass:
 # - TestLanguage
 # - TestNewResolver
 # - TestPackagesConfig_Supports (3 test cases)
@@ -270,6 +317,8 @@ go test ./pkg/deps/dotnet -v
 # - TestCsProj_Parse_CPM
 # - TestCsProj_Parse_ProjectReference
 # - TestCsProj_Parse_CPM_CaseInsensitive
+# - TestDirectoryPackagesProps_Supports
+# - TestDirectoryPackagesProps_Parse
 ```
 
 ### Build

@@ -33,18 +33,23 @@ Stacktower uses a plugin-style architecture where each language ecosystem (Pytho
 
 ## NuGet/.NET Implementation Status
 
-### Completed (14 commits, 1463 lines, all tests passing)
+### Completed (25 commits, 2045 lines, all tests passing except known flaky test)
 
 #### Files Created:
 - `pkg/integrations/nuget/client.go` (246 lines) - NuGet API client
 - `pkg/integrations/nuget/client_test.go` (294 lines) - Unit tests with HTTP mocking
 - `pkg/integrations/nuget/client_integration_test.go` (36 lines) - Real API tests
 - `pkg/integrations/nuget/doc.go` (59 lines) - Package documentation
-- `pkg/deps/dotnet/dotnet.go` (69 lines) - Language registration
-- `pkg/deps/dotnet/packages_config.go` (134 lines) - Legacy XML parser
-- `pkg/deps/dotnet/csproj.go` (325 lines) - Modern SDK-style parser
-- `pkg/deps/dotnet/dotnet_test.go` (247 lines) - Parser unit tests
-- `pkg/deps/dotnet/doc.go` (51 lines) - Package documentation
+- `pkg/deps/dotnet/dotnet.go` (73 lines) - Language registration
+- `pkg/deps/dotnet/packages_config.go` (122 lines) - Legacy XML parser
+- `pkg/deps/dotnet/csproj.go` (284 lines) - Modern SDK-style parser
+- `pkg/deps/dotnet/dotnet_test.go` (487 lines) - Parser unit tests
+- `pkg/deps/dotnet/doc.go` (52 lines) - Package documentation
+- `pkg/deps/dotnet/cpm.go` (62 lines) - Shared CPM parsing helpers
+- `pkg/deps/dotnet/directory_packages_props.go` (89 lines) - CPM manifest parser
+- `pkg/deps/dotnet/constants.go` (3 lines) - Shared root constant
+- `pkg/deps/dotnet/resolve.go` (34 lines) - Shared transitive resolver
+- `pkg/deps/dotnet/root_package.go` (8 lines) - Root package helper
 - `internal/cli/parse.go` (2 lines modified) - CLI registration
 
 #### Key Features:
@@ -56,6 +61,8 @@ Stacktower uses a plugin-style architecture where each language ecosystem (Pytho
 6. **ProjectReference Support**: Recursive parsing of referenced .csproj files with graph merging
 7. **Input Validation**: Empty package name checks
 8. **Future-proof Versioning**: Regex `(?i)net(standard|coreapp|\d+\.)` matches net5.0-net100+, excludes net47/net481
+9. **Directory.Packages.props as Manifest**: Parse CPM file directly as an entry point
+10. **Root Package Naming**: packages.config and Directory.Packages.props use containing folder name
 
 ## Critical Implementation Details
 
@@ -122,6 +129,11 @@ Framework Detection:
 - When not found: Logs error via `opts.Logger()` but continues parsing
 - Implementation: `loadCPMVersions()` walks filesystem with `filepath.Dir()` loop
 
+**Directory.Packages.props Manifest**:
+- Can be parsed directly as a manifest (type `cpm`)
+- Treats PackageVersion entries as direct dependencies
+- Root package defaults to containing folder name
+
 **ProjectReference handling**:
 - Extracts relative paths from `Include` attribute
 - Normalizes Windows backslashes: `strings.ReplaceAll(path, "\\", "/")`
@@ -151,6 +163,7 @@ Framework Detection:
 
 **Simpler than .csproj**: No CPM, no ProjectReference support
 **Transitive resolution**: Same pattern as .csproj - calls resolver for each package
+**Root package**: Defaults to containing folder name (since file has no project name)
 
 ### Language Registration (`pkg/deps/dotnet/dotnet.go`)
 
@@ -276,6 +289,11 @@ pkg/
 │       ├── dotnet.go                    # Language definition, registration
 │       ├── packages_config.go           # Legacy parser
 │       ├── csproj.go                    # Modern parser, CPM, ProjectReference
+│       ├── directory_packages_props.go  # CPM manifest parser
+│       ├── cpm.go                        # CPM XML helpers
+│       ├── constants.go                  # Shared root constant
+│       ├── resolve.go                    # Shared transitive resolver
+│       ├── root_package.go               # Root package helper
 │       ├── dotnet_test.go               # Parser tests
 │       └── doc.go                       # Package documentation
 ├── dag/
@@ -424,13 +442,13 @@ These follow the same architecture and testing patterns.
 - Branch: `feature/nuget`
 - Base: `main`
 - Status: All features implemented, all tests passing, framework targeting improved, ready for PR
-- Commits: 16 (all follow conventional commits format)
-- Files changed: 10 new files, 1 modified file (parse.go)
-- Lines added: 1500+ (including framework comparison improvements)
-- Last commit: "fix(dotnet): case-insensitive CPM version lookup"
+- Commits: 25 (all follow conventional commits format)
+- Files changed: 15 new files, 1 modified file (parse.go)
+- Lines added: 2045 (including framework comparison improvements)
+- Last commit: "feat(dotnet): use parent folder as root package id"
 
 ---
 
-*Updated: January 28, 2026*
+*Updated: February 4, 2026*
 *Purpose: AI agent context for continuing NuGet/.NET integration work*
 *Not intended for human consumption - see SUMMARY.md and TODO.md instead*
