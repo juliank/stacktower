@@ -2,6 +2,7 @@ package dotnet
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/matzehuels/stacktower/pkg/cache"
@@ -59,6 +60,11 @@ func newManifest(name string, res deps.Resolver) deps.ManifestParser {
 	case "cpm":
 		return &DirectoryPackagesProps{resolver: res}
 	default:
+		// .csproj files have variable names (e.g., "MyProject.csproj"),
+		// unlike other manifests with fixed filenames (package.json, go.mod).
+		if strings.HasSuffix(strings.ToLower(name), ".csproj") {
+			return &CsProj{resolver: res}
+		}
 		return nil
 	}
 }
