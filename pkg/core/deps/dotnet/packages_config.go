@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/matzehuels/stacktower/pkg/core/dag"
 	"github.com/matzehuels/stacktower/pkg/core/deps"
@@ -36,7 +37,7 @@ func (p *PackagesConfig) IncludesTransitive() bool {
 
 // Supports checks if the filename matches this parser.
 func (p *PackagesConfig) Supports(name string) bool {
-	return name == "packages.config"
+	return strings.EqualFold(name, "packages.config")
 }
 
 // Parse reads a packages.config file and builds a dependency graph.

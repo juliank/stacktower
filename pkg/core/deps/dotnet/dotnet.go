@@ -60,10 +60,17 @@ func newManifest(name string, res deps.Resolver) deps.ManifestParser {
 	case "cpm":
 		return &DirectoryPackagesProps{resolver: res}
 	default:
-		// .csproj files have variable names (e.g., "MyProject.csproj"),
-		// unlike other manifests with fixed filenames (package.json, go.mod).
-		if strings.HasSuffix(strings.ToLower(name), ".csproj") {
+		nameLower := strings.ToLower(name)
+		// .csproj files have variable names (e.g., "MyProject.csproj")
+		if strings.HasSuffix(nameLower, ".csproj") {
 			return &CsProj{resolver: res}
+		}
+		// packages.config and Directory.Packages.props are case-insensitive on Windows
+		if nameLower == "packages.config" {
+			return &PackagesConfig{resolver: res}
+		}
+		if nameLower == "directory.packages.props" {
+			return &DirectoryPackagesProps{resolver: res}
 		}
 		return nil
 	}
