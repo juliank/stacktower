@@ -44,8 +44,9 @@ func (f fetcher) Fetch(ctx context.Context, name string, refresh bool) (*deps.Pa
 		Description:  p.Description,
 		License:      p.LicenseURL,
 		Author:       p.Authors,
+		Repository:   p.RepositoryURL,
 		HomePage:     p.ProjectURL,
-		ManifestFile: "packages.config",
+		ManifestFile: "*.csproj",
 	}, nil
 }
 

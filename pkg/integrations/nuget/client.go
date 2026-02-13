@@ -2,6 +2,7 @@ package nuget
 
 import (
 	"context"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"net/url"
@@ -22,13 +23,14 @@ import (
 // Zero values: All string fields are empty, Dependencies is nil.
 // This struct is safe for concurrent reads after construction.
 type PackageInfo struct {
-	Name         string   // Package name as published (e.g., "Newtonsoft.Json", never empty in valid info)
-	Version      string   // Latest version (e.g., "13.0.3", never empty in valid info)
-	Dependencies []string // Runtime dependency names (nil or empty if none)
-	ProjectURL   string   // Project URL from metadata (may be empty)
-	Description  string   // Package description (may be empty)
-	LicenseURL   string   // License URL (may be empty)
-	Authors      string   // Comma-separated author names (may be empty)
+	Name          string   // Package name as published (e.g., "Newtonsoft.Json", never empty in valid info)
+	Version       string   // Latest version (e.g., "13.0.3", never empty in valid info)
+	Dependencies  []string // Runtime dependency names (nil or empty if none)
+	ProjectURL    string   // Project URL from metadata (may be empty)
+	RepositoryURL string   // Source repository URL from .nuspec (may be empty)
+	Description   string   // Package description (may be empty)
+	LicenseURL    string   // License URL (may be empty)
+	Authors       string   // Comma-separated author names (may be empty)
 }
 
 // Client provides access to the NuGet.org package registry API.
@@ -147,7 +149,30 @@ func (c *Client) fetch(ctx context.Context, pkg string, info *PackageInfo) error
 	// Extract dependencies
 	info.Dependencies = extractDependencies(catalogData.DependencyGroups)
 
+	// Step 4: Fetch .nuspec to get repository URL (not available in catalog entry)
+	info.RepositoryURL = c.fetchRepositoryURL(ctx, pkg, latestVersion)
+
 	return nil
+}
+
+// fetchRepositoryURL fetches the .nuspec XML for a package and extracts the
+// <repository url="..."> element. This is the only reliable source for the
+// source repository URL, as the catalog entry JSON does not include it.
+//
+// Returns an empty string if the .nuspec cannot be fetched or has no repository.
+func (c *Client) fetchRepositoryURL(ctx context.Context, pkg, version string) string {
+	nuspecURL := fmt.Sprintf("%s/%s/%s/%s.nuspec", c.baseURL, url.PathEscape(pkg), url.PathEscape(version), url.PathEscape(pkg))
+
+	body, err := c.GetText(ctx, nuspecURL)
+	if err != nil {
+		return ""
+	}
+
+	var spec nuspecPackage
+	if err := xml.Unmarshal([]byte(body), &spec); err != nil {
+		return ""
+	}
+	return spec.Metadata.Repository.URL
 }
 
 // extractDependencies parses dependency groups and returns a flat list of dependency names.
@@ -356,4 +381,20 @@ type dependencyGroup struct {
 type dependency struct {
 	ID    string `json:"id"`
 	Range string `json:"range"`
+}
+
+// .nuspec XML structures for extracting repository URL
+
+type nuspecPackage struct {
+	XMLName  xml.Name       `xml:"package"`
+	Metadata nuspecMetadata `xml:"metadata"`
+}
+
+type nuspecMetadata struct {
+	Repository nuspecRepository `xml:"repository"`
+}
+
+type nuspecRepository struct {
+	Type string `xml:"type,attr"`
+	URL  string `xml:"url,attr"`
 }
