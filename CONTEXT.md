@@ -70,11 +70,13 @@ Stacktower uses a plugin-style architecture where each language ecosystem (Pytho
 
 **Base URL**: `https://api.nuget.org/v3-flatcontainer/`
 
-**Three-endpoint fetch pattern**:
+**Four-stage fetch pattern**:
 ```go
-// 1. Version index: /{package_lower}/index.json
-// 2. Registration: /{package_lower}/{version_lower}/{package_lower}.nuspec (not actually .nuspec, is .json)
-// 3. Catalog entry: registration.json contains catalogEntry URL with full dependency metadata
+// 1. Version index: /{package_lower}/index.json → latest version
+// 2. Registration: /registration5-semver1/{package_lower}/{version}.json → catalog entry URL
+// 3. Catalog entry: /catalog0/data/.../package.json → package metadata (dependencies, description, etc.)
+// 4. .nuspec XML: /{package_lower}/{version}/{package_lower}.nuspec → repository URL
+//    (Step 4 added to extract <repository url="..."> which is not in catalog JSON)
 ```
 
 **Package name normalization**: Always lowercase for API calls (`strings.ToLower`)
@@ -102,6 +104,13 @@ Framework Detection:
 ```
 
 **Result**: Accurate dependency resolution for modern .NET applications. Example: Newtonsoft.Json correctly shows 0 dependencies for net6.0 instead of showing legacy dependencies from netstandard1.3.
+
+**Repository URL extraction** (`fetchRepositoryURL`):
+- Fetches .nuspec XML from flatcontainer API
+- Parses `<repository url="..." type="git">` element
+- Returns empty string if .nuspec unavailable or no repository element
+- Used by GitHub enrichment to associate packages with correct source repos
+- Example: EPPlus correctly maps to github.com/EPPlusSoftware/EPPlus
 
 **Error handling**:
 - Returns `integrations.ErrNotFound` for 404
@@ -174,6 +183,15 @@ var languages = []deps.Language{
     dotnet.Language,
 }
 ```
+
+**Manifest filename matching** (`newManifest`):
+- Case-insensitive matching for Windows compatibility
+- Handles variable .csproj names (MyProject.csproj, App.csproj, etc.)
+- Pattern matching:
+  - `case "csproj"` → canonical name from ManifestAliases
+  - `strings.HasSuffix(nameLower, ".csproj")` → any .csproj file
+  - `nameLower == "packages.config"` → case-insensitive
+  - `nameLower == "directory.packages.props"` → case-insensitive
 
 CLI command: `stacktower parse dotnet <package-or-file> [flags]`
 

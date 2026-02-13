@@ -39,6 +39,24 @@ For .NET applications, it's typical that an application consists of multiple pro
 
 Minor technical improvements and issue fixes.
 
+### Recently Fixed
+
+- [x] **Repository URL Extraction from .nuspec** ✅ COMPLETED (February 13, 2026)
+  
+  **Problem**: GitHub enrichment associated packages with wrong repositories. For example, EPPlus's `projectUrl` points to epplussoftware.com (not GitHub), so ExtractURL failed and the fallback GitHub code search found repos that *use* EPPlus rather than the EPPlus source repo.
+  
+  **Solution**: Added .nuspec XML fetching from flatcontainer API to extract `<repository url="...">` element, which is the only reliable source for the GitHub URL (not available in catalog JSON). Pass it through as `Repository` field on `deps.Package` so enrichment's ExtractURL resolves correctly.
+  
+  **Result**: EPPlus now correctly maps to github.com/EPPlusSoftware/EPPlus with description "EPPlus-Excel spreadsheets for .NET".
+
+- [x] **Case-Insensitive Manifest Matching** ✅ COMPLETED (February 13, 2026)
+  
+  **Problem**: Windows filesystems are case-insensitive, but manifest lookup used exact string matching. Parsing "Directory.Packages.props" failed with "no parser for manifest" error.
+  
+  **Solution**: Added case-insensitive fallback in `newManifest()` for packages.config and Directory.Packages.props. Also handles variable .csproj filenames (MyProject.csproj, etc.) via suffix check. Updated `PackagesConfig.Supports()` to use `strings.EqualFold` for consistency.
+  
+  **Result**: All three manifest types now work regardless of casing on Windows.
+
 ### Framework Targeting Accuracy
 
 - [x] **Prefer newest framework version** ✅ COMPLETED (January 25, 2026)

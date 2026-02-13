@@ -4,17 +4,22 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
 
 ## Summary Statistics
 
-- **15 files changed, 2045 lines added** (all new code, minimal deletions)
-- **26 commits total** (including upstream merge)
+- **15 files changed, 2095 lines added** (all new code, minimal deletions)
+- **28 commits total** (including upstream merge)
 - **Framework targeting accuracy improvement completed**
+- **GitHub enrichment accuracy fixed**
 
 ## Changed Files
 
 ### New Integration Files (NuGet API client)
 
-#### 1. pkg/integrations/nuget/client.go (246 lines)
+#### 1. pkg/integrations/nuget/client.go (395 lines)
 - NuGet.org v3 API client with caching
-- Three-endpoint flow: version index → registration → catalog entry
+- Four-stage fetch flow:
+  1. Version index → latest version
+  2. Registration → catalog entry URL
+  3. Catalog entry → package metadata
+  4. .nuspec XML → repository URL (via flatcontainer API)
 - Three-stage framework targeting for dependencies:
   1. Framework-agnostic (netstandard, netcoreapp)
   2. Modern .NET (net5.0+) with regex matching
@@ -227,7 +232,8 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
 ## Features Implemented
 
 ### NuGet API Integration
-- ✅ Three-endpoint API flow (version index, registration, catalog)
+- ✅ Four-stage API flow (version index, registration, catalog, .nuspec)
+- ✅ Repository URL extraction from .nuspec XML
 - ✅ HTTP caching with configurable TTL
 - ✅ Automatic retries on failures
 - ✅ Comprehensive error handling
@@ -243,6 +249,8 @@ This document summarizes all changes made in the `feature/nuget` branch to add .
 - ✅ Transitive dependency resolution
 - ✅ Windows path normalization
 - ✅ Root package derived from containing folder (non-.csproj)
+- ✅ Case-insensitive manifest filename matching (Windows compatibility)
+- ✅ Variable .csproj filename support (MyProject.csproj, etc.)
 
 ### Framework Targeting
 - ✅ Three-stage selection strategy
