@@ -118,24 +118,20 @@ func (c *Client) fetch(ctx context.Context, pkg string, info *PackageInfo) error
 		if !errors.Is(err, integrations.ErrNotFound) {
 			return err
 		}
-		// If we can't get metadata, return basic info
-		info.Name = pkg
-		info.Version = latestVersion
-		return nil
+		// Registration API unavailable (likely pre-release), fall back to .nuspec
+		return c.fetchNuspecMetadata(ctx, pkg, latestVersion, info)
 	}
 
 	// Step 3: Fetch the actual catalog entry with full metadata
 	var catalogData catalogEntry
 	if registrationData.CatalogEntry != "" {
 		if err := c.Get(ctx, registrationData.CatalogEntry, &catalogData); err != nil {
-			// If catalog fetch fails, use basic info
-			info.Name = pkg
-			info.Version = latestVersion
-			return nil
+			// Catalog unavailable (e.g., pre-release version), fall back to .nuspec
+			return c.fetchNuspecMetadata(ctx, pkg, latestVersion, info)
 		}
 	}
 
-	// Populate the PackageInfo
+	// Populate the PackageInfo from catalog
 	info.Name = catalogData.ID
 	if info.Name == "" {
 		info.Name = pkg
@@ -173,6 +169,58 @@ func (c *Client) fetchRepositoryURL(ctx context.Context, pkg, version string) st
 		return ""
 	}
 	return spec.Metadata.Repository.URL
+}
+
+// fetchNuspecMetadata fetches the .nuspec XML file and extracts full package metadata.
+// This is used as a fallback when the catalog entry is unavailable (e.g., for pre-release versions).
+//
+// The .nuspec file contains all metadata fields including description, authors, dependencies,
+// and repository URL. It's available for all package versions, including pre-releases.
+//
+// Returns an error if the .nuspec cannot be fetched or parsed.
+func (c *Client) fetchNuspecMetadata(ctx context.Context, pkg, version string, info *PackageInfo) error {
+	nuspecURL := fmt.Sprintf("%s/%s/%s/%s.nuspec", c.baseURL, url.PathEscape(pkg), url.PathEscape(version), url.PathEscape(pkg))
+
+	body, err := c.GetText(ctx, nuspecURL)
+	if err != nil {
+		return fmt.Errorf("failed to fetch .nuspec: %w", err)
+	}
+
+	var spec nuspecPackage
+	if err := xml.Unmarshal([]byte(body), &spec); err != nil {
+		return fmt.Errorf("failed to parse .nuspec XML: %w", err)
+	}
+
+	// Populate PackageInfo from .nuspec
+	info.Name = spec.Metadata.ID
+	if info.Name == "" {
+		info.Name = pkg
+	}
+	info.Version = version
+	info.Description = spec.Metadata.Description
+	info.ProjectURL = spec.Metadata.ProjectURL
+	info.LicenseURL = spec.Metadata.LicenseURL
+	info.Authors = spec.Metadata.Authors
+	info.RepositoryURL = spec.Metadata.Repository.URL
+
+	// Convert .nuspec dependencies to catalog-style dependency groups
+	var depGroups []dependencyGroup
+	for _, group := range spec.Metadata.Dependencies.Groups {
+		var deps []dependency
+		for _, dep := range group.Dependencies {
+			deps = append(deps, dependency{
+				ID:    dep.ID,
+				Range: dep.Version,
+			})
+		}
+		depGroups = append(depGroups, dependencyGroup{
+			TargetFramework: group.TargetFramework,
+			Dependencies:    deps,
+		})
+	}
+	info.Dependencies = extractDependencies(depGroups)
+
+	return nil
 }
 
 // extractDependencies parses dependency groups and returns a flat list of dependency names.
@@ -383,7 +431,7 @@ type dependency struct {
 	Range string `json:"range"`
 }
 
-// .nuspec XML structures for extracting repository URL
+// .nuspec XML structures for extracting package metadata
 
 type nuspecPackage struct {
 	XMLName  xml.Name       `xml:"package"`
@@ -391,10 +439,31 @@ type nuspecPackage struct {
 }
 
 type nuspecMetadata struct {
-	Repository nuspecRepository `xml:"repository"`
+	ID           string                  `xml:"id"`
+	Version      string                  `xml:"version"`
+	Description  string                  `xml:"description"`
+	Authors      string                  `xml:"authors"`
+	ProjectURL   string                  `xml:"projectUrl"`
+	LicenseURL   string                  `xml:"licenseUrl"`
+	Repository   nuspecRepository        `xml:"repository"`
+	Dependencies nuspecDependencies      `xml:"dependencies"`
 }
 
 type nuspecRepository struct {
 	Type string `xml:"type,attr"`
 	URL  string `xml:"url,attr"`
+}
+
+type nuspecDependencies struct {
+	Groups []nuspecDependencyGroup `xml:"group"`
+}
+
+type nuspecDependencyGroup struct {
+	TargetFramework string               `xml:"targetFramework,attr"`
+	Dependencies    []nuspecDependency   `xml:"dependency"`
+}
+
+type nuspecDependency struct {
+	ID      string `xml:"id,attr"`
+	Version string `xml:"version,attr"`
 }
