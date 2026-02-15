@@ -76,6 +76,30 @@ Minor technical improvements and issue fixes.
   
   **Next Step**: Consider deriving target framework from root application's .csproj file (TargetFramework element) for even more accurate resolution in manifest parsing scenarios.
 
+- [x] **Pre-release Package Support** ✅ COMPLETED (February 15, 2026)
+  
+  **Problem**: Pre-release packages (e.g., `Microsoft.Extensions.Options v11.0.0-preview.1.26104.118`) weren't getting GitHub enrichment metadata. Additionally, pre-release versions were being selected over stable versions.
+  
+  **Root Cause**: 
+  1. NuGet's registration API returns 404 for pre-release versions, causing early return without fetching .nuspec
+  2. Version selection always chose the last version in the list (often a pre-release)
+  
+  **Solution Implemented**:
+  1. **Stable Version Preference**: Added `findLatestStableVersion()` that searches backwards for stable versions (no hyphen), falling back to latest pre-release only if no stable exists
+  2. **.nuspec Fallback**: Extended .nuspec XML parsing to extract all metadata (description, authors, projectUrl, licenseUrl, dependencies). When catalog fetch fails, falls back to full .nuspec parsing
+  
+  **Implementation Details**:
+  - Extended `nuspecMetadata` struct with all fields
+  - Added `fetchNuspecMetadata()` method for full .nuspec parsing
+  - Modified fetch logic to use .nuspec as fallback when catalog unavailable
+  - Added 7 test cases for version selection logic
+  
+  **Results**:
+  - Microsoft.Extensions.Options now uses v10.0.3 (stable) instead of v11.0.0-preview.1
+  - Pre-release-only packages still work correctly via .nuspec fallback
+  - Full GitHub enrichment works for both stable and pre-release packages
+  - More reliable: stable versions have full catalog API support
+
 ### Pre-PR Testing
 
 - [ ] **End-to-end testing with diverse real-world projects**

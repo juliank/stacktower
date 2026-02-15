@@ -33,11 +33,11 @@ Stacktower uses a plugin-style architecture where each language ecosystem (Pytho
 
 ## NuGet/.NET Implementation Status
 
-### Completed (25 commits, 2045 lines, all tests passing except known flaky test)
+### Completed (27 commits, 2200+ lines, all tests passing)
 
 #### Files Created:
-- `pkg/integrations/nuget/client.go` (246 lines) - NuGet API client
-- `pkg/integrations/nuget/client_test.go` (294 lines) - Unit tests with HTTP mocking
+- `pkg/integrations/nuget/client.go` (450+ lines) - NuGet API client
+- `pkg/integrations/nuget/client_test.go` (420+ lines) - Unit tests with HTTP mocking
 - `pkg/integrations/nuget/client_integration_test.go` (36 lines) - Real API tests
 - `pkg/integrations/nuget/doc.go` (59 lines) - Package documentation
 - `pkg/deps/dotnet/dotnet.go` (73 lines) - Language registration
@@ -53,16 +53,18 @@ Stacktower uses a plugin-style architecture where each language ecosystem (Pytho
 - `internal/cli/parse.go` (2 lines modified) - CLI registration
 
 #### Key Features:
-1. **NuGet v3 API Integration**: Three-endpoint flow (flatcontainer version index → registration → catalog entry)
-2. **Framework Targeting**: Three-stage dependency resolution (framework-agnostic → modern .NET → fallback)
-3. **packages.config Support**: Legacy XML format with transitive resolution
-4. **SDK-style .csproj Support**: Modern format with PackageReference
-5. **Central Package Management (CPM)**: Searches parent dirs for Directory.Packages.props
-6. **ProjectReference Support**: Recursive parsing of referenced .csproj files with graph merging
-7. **Input Validation**: Empty package name checks
-8. **Future-proof Versioning**: Regex `(?i)net(standard|coreapp|\d+\.)` matches net5.0-net100+, excludes net47/net481
-9. **Directory.Packages.props as Manifest**: Parse CPM file directly as an entry point
-10. **Root Package Naming**: packages.config and Directory.Packages.props use containing folder name
+1. **NuGet v3 API Integration**: Four-stage flow with .nuspec fallback
+2. **Stable Version Preference**: Prefers stable releases over pre-releases
+3. **Pre-release Package Support**: Full .nuspec parsing as fallback when catalog unavailable
+4. **Framework Targeting**: Three-stage dependency resolution (framework-agnostic → modern .NET → fallback)
+5. **packages.config Support**: Legacy XML format with transitive resolution
+6. **SDK-style .csproj Support**: Modern format with PackageReference
+7. **Central Package Management (CPM)**: Searches parent dirs for Directory.Packages.props
+8. **ProjectReference Support**: Recursive parsing of referenced .csproj files with graph merging
+9. **Input Validation**: Empty package name checks
+10. **Future-proof Versioning**: Regex `(?i)net(standard|coreapp|\d+\.)` matches net5.0-net100+, excludes net47/net481
+11. **Directory.Packages.props as Manifest**: Parse CPM file directly as an entry point
+12. **Root Package Naming**: packages.config and Directory.Packages.props use containing folder name
 
 ## Critical Implementation Details
 
@@ -72,12 +74,18 @@ Stacktower uses a plugin-style architecture where each language ecosystem (Pytho
 
 **Four-stage fetch pattern**:
 ```go
-// 1. Version index: /{package_lower}/index.json → latest version
+// 1. Version index: /{package_lower}/index.json → latest STABLE version (prefers stable)
 // 2. Registration: /registration5-semver1/{package_lower}/{version}.json → catalog entry URL
-// 3. Catalog entry: /catalog0/data/.../package.json → package metadata (dependencies, description, etc.)
-// 4. .nuspec XML: /{package_lower}/{version}/{package_lower}.nuspec → repository URL
-//    (Step 4 added to extract <repository url="..."> which is not in catalog JSON)
+// 3. Catalog entry: /catalog0/data/.../package.json → package metadata (if available)
+// 4. .nuspec XML fallback: /{package_lower}/{version}/{package_lower}.nuspec → full metadata
+//    (Step 4 used when catalog unavailable, e.g., for pre-release versions)
 ```
+
+**Version Selection** (`findLatestStableVersion`):
+- Searches backwards through version list for first stable version (no hyphen)
+- Stable versions preferred: `10.0.3` over `11.0.0-preview.1`
+- Falls back to latest pre-release if no stable versions exist
+- Rationale: Pre-release versions have catalog API limitations (404 on registration endpoint)
 
 **Package name normalization**: Always lowercase for API calls (`strings.ToLower`)
 
@@ -111,6 +119,16 @@ Framework Detection:
 - Returns empty string if .nuspec unavailable or no repository element
 - Used by GitHub enrichment to associate packages with correct source repos
 - Example: EPPlus correctly maps to github.com/EPPlusSoftware/EPPlus
+
+**.nuspec Fallback for Pre-releases** (`fetchNuspecMetadata`):
+- Pre-release versions return 404 from NuGet's registration/catalog APIs
+- Fetches complete .nuspec XML and parses all metadata fields:
+  - `<description>`, `<authors>`, `<projectUrl>`, `<licenseUrl>`
+  - `<repository url="...">` for GitHub URL
+  - `<dependencies><group>` for framework-specific dependencies
+- Converts .nuspec dependencies to catalog-style dependency groups
+- Maintains full enrichment capability for pre-release packages
+- Example: Microsoft.Extensions.Options pre-release versions get full metadata
 
 **Error handling**:
 - Returns `integrations.ErrNotFound` for 404
@@ -460,14 +478,16 @@ These follow the same architecture and testing patterns.
 
 - Branch: `feature/nuget`
 - Base: `main`
-- Status: All features implemented, all tests passing, framework targeting improved, ready for PR
-- Commits: 25 (all follow conventional commits format)
-- Files changed: 15 new files, 1 modified file (parse.go)
-- Lines added: 2045 (including framework comparison improvements)
-- Last commit: "feat(dotnet): use parent folder as root package id"
+- Status: All features implemented, all tests passing, pre-release support complete, ready for PR
+- Commits: 27 (all follow conventional commits format)
+- Files changed: 15 files (14 new, 1 modified)
+- Lines added: 2,200+
+- Last commits: 
+  - "fix(nuget): use .nuspec as fallback for pre-release package metadata"
+  - "feat(nuget): prefer stable versions over pre-releases"
 
 ---
 
-*Updated: February 4, 2026*
+*Updated: February 15, 2026*
 *Purpose: AI agent context for continuing NuGet/.NET integration work*
 *Not intended for human consumption - see SUMMARY.md and TODO.md instead*
