@@ -311,6 +311,12 @@ make check                                       # CI checks (fmt, lint, test, v
    - ProjectReference parsing is sequential (not parallel)
    - No caching of parsed .csproj files (re-parses if referenced multiple times)
 
+6. **Malformed Package Metadata** (not a bug):
+   - Parser correctly reports malformed dependencies from .nuspec files
+   - Example: `System.Linq.Dynamic.Library` (removed from NuGet for ToS violations) contains bogus dependency `FluentValidationNA` in its .nuspec
+   - This is expected behavior - parser faithfully extracts whatever is in the metadata
+   - Enrichment will fail for non-existent packages (which is correct)
+
 ## File Locations Map
 
 ```
