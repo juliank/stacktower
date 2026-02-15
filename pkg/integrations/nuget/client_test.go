@@ -338,6 +338,60 @@ func TestExtractDependencies(t *testing.T) {
 	}
 }
 
+// TestFindLatestStableVersion tests version selection logic.
+func TestFindLatestStableVersion(t *testing.T) {
+	tests := []struct {
+		name     string
+		versions []string
+		want     string
+	}{
+		{
+			name:     "all stable versions",
+			versions: []string{"1.0.0", "2.0.0", "3.0.0"},
+			want:     "3.0.0",
+		},
+		{
+			name:     "stable and pre-release versions",
+			versions: []string{"9.0.0", "10.0.0", "10.0.3", "11.0.0-preview.1.26104.118"},
+			want:     "10.0.3",
+		},
+		{
+			name:     "all pre-release versions",
+			versions: []string{"1.0.0-alpha", "1.0.0-beta", "1.0.0-rc1"},
+			want:     "1.0.0-rc1",
+		},
+		{
+			name:     "single stable version",
+			versions: []string{"1.0.0"},
+			want:     "1.0.0",
+		},
+		{
+			name:     "single pre-release version",
+			versions: []string{"1.0.0-preview"},
+			want:     "1.0.0-preview",
+		},
+		{
+			name:     "pre-release then stable",
+			versions: []string{"1.0.0-alpha", "1.0.0"},
+			want:     "1.0.0",
+		},
+		{
+			name:     "multiple pre-releases after stable",
+			versions: []string{"8.0.0", "9.0.0", "10.0.0-preview.1", "10.0.0-preview.2", "10.0.0-rc1"},
+			want:     "9.0.0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := findLatestStableVersion(tt.versions)
+			if got != tt.want {
+				t.Errorf("findLatestStableVersion() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestNewClient tests client creation.
 func TestNewClient(t *testing.T) {
 	client := NewClient(cache.NewNullCache(), 24*time.Hour)

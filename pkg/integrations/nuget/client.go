@@ -107,8 +107,8 @@ func (c *Client) fetch(ctx context.Context, pkg string, info *PackageInfo) error
 		return fmt.Errorf("no versions found for package %s (API returned empty version list)", pkg)
 	}
 
-	// Get the latest version (versions are typically sorted, but we take the last one)
-	latestVersion := versionData.Versions[len(versionData.Versions)-1]
+	// Prefer latest stable version, fallback to latest pre-release if no stable exists
+	latestVersion := findLatestStableVersion(versionData.Versions)
 
 	// Step 2: Get the package metadata from the registration API
 	// This returns a reference to the catalog entry
@@ -221,6 +221,24 @@ func (c *Client) fetchNuspecMetadata(ctx context.Context, pkg, version string, i
 	info.Dependencies = extractDependencies(depGroups)
 
 	return nil
+}
+
+// findLatestStableVersion returns the latest stable version from a sorted version list.
+// Stable versions don't contain hyphens (e.g., "13.0.3" is stable, "11.0.0-preview.1" is pre-release).
+//
+// Pre-release versions have catalog API limitations (404 on registration endpoint), so we prefer
+// stable versions when available. If all versions are pre-release, returns the latest one.
+//
+// The versions slice is expected to be sorted in ascending order (oldest to newest).
+func findLatestStableVersion(versions []string) string {
+	// Search backwards from the end (newest) to find first stable version
+	for i := len(versions) - 1; i >= 0; i-- {
+		if !strings.Contains(versions[i], "-") {
+			return versions[i]
+		}
+	}
+	// All versions are pre-release, return the latest one
+	return versions[len(versions)-1]
 }
 
 // extractDependencies parses dependency groups and returns a flat list of dependency names.
