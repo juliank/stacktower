@@ -39,6 +39,8 @@ func TestPackagesConfig_Supports(t *testing.T) {
 		want     bool
 	}{
 		{"exact match", "packages.config", true},
+		{"uppercase", "PACKAGES.CONFIG", true},
+		{"mixed case", "Packages.Config", true},
 		{"wrong name", "package.json", false},
 		{"csproj", "MyApp.csproj", false},
 	}
@@ -484,5 +486,50 @@ func TestCsProj_Parse_CPM_CaseInsensitive(t *testing.T) {
 	}
 	if version != "13.0.3" {
 		t.Errorf("Newtonsoft.Json version = %q, want %q", version, "13.0.3")
+	}
+}
+
+func TestNewManifest(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		wantType string
+		wantNil  bool
+	}{
+		// Canonical type names (from alias resolution)
+		{"packages type", "packages", "packages", false},
+		{"csproj type", "csproj", "csproj", false},
+		{"cpm type", "cpm", "cpm", false},
+
+		// Variable .csproj filenames (not covered by alias map)
+		{"variable csproj", "MyProject.csproj", "csproj", false},
+		{"uppercase csproj", "MyProject.CSPROJ", "csproj", false},
+
+		// Case-insensitive filename matching
+		{"uppercase packages.config", "PACKAGES.CONFIG", "packages", false},
+		{"mixed case packages.config", "Packages.Config", "packages", false},
+		{"uppercase dir props", "DIRECTORY.PACKAGES.PROPS", "cpm", false},
+		{"mixed case dir props", "Directory.Packages.Props", "cpm", false},
+
+		// Unknown
+		{"unknown", "something.xml", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := newManifest(tt.input, nil)
+			if tt.wantNil {
+				if p != nil {
+					t.Errorf("newManifest(%q) = non-nil, want nil", tt.input)
+				}
+				return
+			}
+			if p == nil {
+				t.Fatalf("newManifest(%q) = nil, want %q", tt.input, tt.wantType)
+			}
+			if p.Type() != tt.wantType {
+				t.Errorf("newManifest(%q).Type() = %q, want %q", tt.input, p.Type(), tt.wantType)
+			}
+		})
 	}
 }

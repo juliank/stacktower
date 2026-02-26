@@ -130,7 +130,7 @@ func TestClient_FetchPackage(t *testing.T) {
 			// Set up mocks with access to server URL
 			tt.setupMock(mux, server.URL)
 
-			client := testClient(t, server.URL, server.URL, server.URL)
+			client := testClient(t, server.URL, server.URL)
 
 			info, err := client.FetchPackage(context.Background(), tt.pkg, true)
 
@@ -407,7 +407,7 @@ func TestNewClient(t *testing.T) {
 }
 
 // testClient creates a test client with mock URLs for testing.
-func testClient(t *testing.T, baseURL, registrationURL, catalogURL string) *Client {
+func testClient(t *testing.T, baseURL, registrationURL string) *Client {
 	t.Helper()
 	backend := cache.NewNullCache()
 	return &Client{
