@@ -178,7 +178,7 @@ func (p *CsProj) mergeProjectReferences(g *dag.DAG, project csprojXML, baseDir s
 			g.AddEdge(dag.Edge{From: projectRoot, To: projName})
 
 			// Merge the referenced project's dependencies into our graph
-			refGraph := refResult.Graph.(*dag.DAG)
+			refGraph := refResult.Graph
 			for _, n := range refGraph.Nodes() {
 				if n.ID != projectRoot {
 					g.AddNode(*n)

@@ -58,6 +58,61 @@ func NewClient(backend cache.Cache, cacheTTL time.Duration) *Client {
 	}
 }
 
+// ListVersions returns all available versions for a package, sorted oldest to newest.
+// This implements deps.VersionLister for PubGrub-based dependency resolution.
+func (c *Client) ListVersions(ctx context.Context, pkg string, refresh bool) ([]string, error) {
+	pkgLower := strings.ToLower(strings.TrimSpace(pkg))
+	versionURL := fmt.Sprintf("%s/%s/index.json", c.baseURL, url.PathEscape(pkgLower))
+	var versionData versionIndexResponse
+	if err := c.Get(ctx, versionURL, &versionData); err != nil {
+		return nil, err
+	}
+	return versionData.Versions, nil
+}
+
+// FetchPackageVersion retrieves metadata for a specific version of a .NET package.
+// This implements part of deps.Fetcher for PubGrub-based dependency resolution.
+func (c *Client) FetchPackageVersion(ctx context.Context, pkg, version string, refresh bool) (*PackageInfo, error) {
+	pkgLower := strings.ToLower(strings.TrimSpace(pkg))
+	version = strings.TrimSpace(version)
+
+	var info PackageInfo
+	registrationURL := fmt.Sprintf("%s/%s/%s.json", c.registrationURL, url.PathEscape(pkgLower), url.PathEscape(version))
+	var registrationData registrationResponse
+	if err := c.Get(ctx, registrationURL, &registrationData); err != nil {
+		if !errors.Is(err, integrations.ErrNotFound) {
+			return nil, err
+		}
+		if err := c.fetchNuspecMetadata(ctx, pkgLower, version, &info); err != nil {
+			return nil, err
+		}
+		return &info, nil
+	}
+
+	var catalogData catalogEntry
+	if registrationData.CatalogEntry != "" {
+		if err := c.Get(ctx, registrationData.CatalogEntry, &catalogData); err != nil {
+			if err2 := c.fetchNuspecMetadata(ctx, pkgLower, version, &info); err2 != nil {
+				return nil, err
+			}
+			return &info, nil
+		}
+	}
+
+	info.Name = catalogData.ID
+	if info.Name == "" {
+		info.Name = pkg
+	}
+	info.Version = version
+	info.Description = catalogData.Description
+	info.ProjectURL = catalogData.ProjectURL
+	info.LicenseURL = catalogData.LicenseURL
+	info.Authors = catalogData.Authors
+	info.Dependencies = extractDependencies(catalogData.DependencyGroups)
+	info.RepositoryURL = c.fetchRepositoryURL(ctx, pkgLower, version)
+	return &info, nil
+}
+
 // FetchPackage retrieves metadata for a .NET package from NuGet.org.
 //
 // The pkg parameter is normalized to lowercase for API requests (NuGet is case-insensitive).
