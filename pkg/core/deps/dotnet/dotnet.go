@@ -20,6 +20,9 @@ var Language = &deps.Language{
 		"*.csproj":                 "csproj",
 		"directory.packages.props": "cpm",
 	},
+	// NuGet package names are case-insensitive, so normalise to lowercase for
+	// consistent graph node IDs and cache key lookups.
+	NormalizeName:   strings.ToLower,
 	NewResolver:     newResolver,
 	NewManifest:     newManifest,
 	ManifestParsers: manifestParsers,
@@ -63,8 +66,8 @@ func nugetPkgToDepsPkg(p *nuget.PackageInfo) *deps.Package {
 		HomePage:     p.ProjectURL,
 		ManifestFile: "*.csproj",
 	}
-	for _, name := range p.Dependencies {
-		pkg.Dependencies = append(pkg.Dependencies, deps.DependencyFromName(name))
+	for _, d := range p.Dependencies {
+		pkg.Dependencies = append(pkg.Dependencies, deps.DependencyFromNameConstraint(d.Name, d.Constraint))
 	}
 	return pkg
 }

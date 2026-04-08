@@ -1,6 +1,7 @@
 package dotnet
 
 import (
+	"log/slog"
 	"strings"
 
 	"github.com/contriboss/pubgrub-go"
@@ -41,6 +42,7 @@ func (NuGetMatcher) ParseConstraint(constraint string) pubgrub.Condition {
 		return pubgrub.NewVersionSetCondition(vs)
 	}
 
+	slog.Warn("nuget: unrecognized version constraint, treating as unconstrained", "constraint", constraint)
 	return nil
 }
 

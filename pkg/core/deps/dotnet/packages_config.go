@@ -99,10 +99,14 @@ type packagesPackage struct {
 	TargetFramework string `xml:"targetFramework,attr"`
 }
 
-func collectPackageIDs(pkgConfig packagesConfigXML) []string {
-	var ids []string
+func collectPackageIDs(pkgConfig packagesConfigXML) []deps.Dependency {
+	var ids []deps.Dependency
 	for _, pkg := range pkgConfig.Packages {
-		ids = append(ids, pkg.ID)
+		d := deps.DependencyFromName(pkg.ID)
+		if pkg.Version != "" {
+			d.Pinned = pkg.Version
+		}
+		ids = append(ids, d)
 	}
 	return ids
 }
@@ -118,6 +122,6 @@ func addDirectPackages(g *dag.DAG, pkgConfig packagesConfigXML) {
 
 // resolve fetches transitive dependencies for all direct dependencies.
 // It merges the sub-graphs from each package into a single graph.
-func (p *PackagesConfig) resolve(ctx context.Context, pkgs []string, opts deps.Options) (*dag.DAG, error) {
+func (p *PackagesConfig) resolve(ctx context.Context, pkgs []deps.Dependency, opts deps.Options) (*dag.DAG, error) {
 	return resolveTransitive(ctx, p.resolver, pkgs, opts)
 }

@@ -91,8 +91,8 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 	// Try to infer project name from filename
 	projectName := projectNameFromPath(path)
 
-	// Collect direct package dependencies
-	directDeps := collectDirectDeps(project)
+	// Collect direct package dependencies (including version from CPM if available)
+	directDeps := collectDirectDeps(project, cpmVersions)
 
 	// Process project references recursively
 	baseDir := filepath.Dir(path)
@@ -135,13 +135,23 @@ func (p *CsProj) Parse(path string, opts deps.Options) (*deps.ManifestResult, er
 	}, nil
 }
 
-func collectDirectDeps(project csprojXML) []string {
-	var directDeps []string
+func collectDirectDeps(project csprojXML, cpmVersions map[string]string) []deps.Dependency {
+	var directDeps []deps.Dependency
 	for _, itemGroup := range project.ItemGroups {
 		for _, pkg := range itemGroup.PackageReferences {
-			if pkg.Include != "" {
-				directDeps = append(directDeps, pkg.Include)
+			if pkg.Include == "" {
+				continue
 			}
+			// Prefer version from the element itself; fall back to CPM.
+			version := pkg.Version
+			if version == "" {
+				version = cpmVersionForPackage(cpmVersions, pkg.Include)
+			}
+			d := deps.DependencyFromName(pkg.Include)
+			if version != "" {
+				d.Pinned = version
+			}
+			directDeps = append(directDeps, d)
 		}
 	}
 	return directDeps
@@ -279,6 +289,6 @@ func loadCPMVersions(csprojPath string) (map[string]string, error) {
 
 // resolve fetches transitive dependencies for all direct dependencies.
 // It merges the sub-graphs from each package into a single graph.
-func (p *CsProj) resolve(ctx context.Context, pkgs []string, opts deps.Options) (*dag.DAG, error) {
+func (p *CsProj) resolve(ctx context.Context, pkgs []deps.Dependency, opts deps.Options) (*dag.DAG, error) {
 	return resolveTransitive(ctx, p.resolver, pkgs, opts)
 }
