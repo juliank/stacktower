@@ -188,7 +188,7 @@ func TestExtractDependencies(t *testing.T) {
 	tests := []struct {
 		name   string
 		groups []dependencyGroup
-		want   []string
+		want   []PackageDependency
 	}{
 		{
 			name:   "empty groups",
@@ -206,7 +206,10 @@ func TestExtractDependencies(t *testing.T) {
 					},
 				},
 			},
-			want: []string{"System.Text.Json", "Microsoft.Extensions.Logging"},
+			want: []PackageDependency{
+				{Name: "System.Text.Json", Constraint: "[6.0.0, )"},
+				{Name: "Microsoft.Extensions.Logging", Constraint: "[6.0.0, )"},
+			},
 		},
 		{
 			name: "multiple groups - prefers newest framework",
@@ -230,7 +233,9 @@ func TestExtractDependencies(t *testing.T) {
 					},
 				},
 			},
-			want: []string{"System.Text.Json"},
+			want: []PackageDependency{
+				{Name: "System.Text.Json", Constraint: "[6.0.0, )"},
+			},
 		},
 		{
 			name: "framework-agnostic dependencies",
@@ -242,7 +247,9 @@ func TestExtractDependencies(t *testing.T) {
 					},
 				},
 			},
-			want: []string{"Common.Logging"},
+			want: []PackageDependency{
+				{Name: "Common.Logging", Constraint: "[3.4.1, )"},
+			},
 		},
 		{
 			name: "prefers net8.0 over net6.0",
@@ -260,7 +267,9 @@ func TestExtractDependencies(t *testing.T) {
 					},
 				},
 			},
-			want: []string{"NewDep"},
+			want: []PackageDependency{
+				{Name: "NewDep", Constraint: "[2.0.0, )"},
+			},
 		},
 		{
 			name: "prefers netcoreapp over netstandard",
@@ -278,7 +287,9 @@ func TestExtractDependencies(t *testing.T) {
 					},
 				},
 			},
-			want: []string{"CoreDep"},
+			want: []PackageDependency{
+				{Name: "CoreDep", Constraint: "[2.0.0, )"},
+			},
 		},
 		{
 			name: "prefers netstandard2.1 over netstandard2.0",
@@ -296,7 +307,9 @@ func TestExtractDependencies(t *testing.T) {
 					},
 				},
 			},
-			want: []string{"Standard21Dep"},
+			want: []PackageDependency{
+				{Name: "Standard21Dep", Constraint: "[2.0.0, )"},
+			},
 		},
 		{
 			name: "ignores legacy .NET Framework when modern available",
@@ -314,7 +327,9 @@ func TestExtractDependencies(t *testing.T) {
 					},
 				},
 			},
-			want: []string{"ModernDep"},
+			want: []PackageDependency{
+				{Name: "ModernDep", Constraint: "[2.0.0, )"},
+			},
 		},
 	}
 
@@ -322,16 +337,17 @@ func TestExtractDependencies(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := extractDependencies(tt.groups)
 
-			// Check length
 			if len(got) != len(tt.want) {
 				t.Errorf("extractDependencies() length = %v, want %v", len(got), len(tt.want))
 				return
 			}
 
-			// Check each dependency
 			for i, dep := range got {
-				if dep != tt.want[i] {
-					t.Errorf("extractDependencies()[%d] = %v, want %v", i, dep, tt.want[i])
+				if dep.Name != tt.want[i].Name {
+					t.Errorf("extractDependencies()[%d].Name = %v, want %v", i, dep.Name, tt.want[i].Name)
+				}
+				if dep.Constraint != tt.want[i].Constraint {
+					t.Errorf("extractDependencies()[%d].Constraint = %v, want %v", i, dep.Constraint, tt.want[i].Constraint)
 				}
 			}
 		})

@@ -40,6 +40,7 @@ var DefaultRateLimits = map[string]BurstLimit{
 	"rubygems":      {RequestsPerSecond: 30, Burst: 20},
 	"packagist":     {RequestsPerSecond: 30, Burst: 20},
 	"maven":         {RequestsPerSecond: 30, Burst: 20},
+	"nuget":         {RequestsPerSecond: 30, Burst: 20},
 	"goproxy":       {RequestsPerSecond: 50, Burst: 30},   // CDN-backed
 	"github":        {RequestsPerSecond: 10, Burst: 50},   // 5000/hour limit, higher burst for parallel enrichment
 	"github_unauth": {RequestsPerSecond: 0.015, Burst: 5}, // 60/hour limit

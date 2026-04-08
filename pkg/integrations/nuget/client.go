@@ -7,12 +7,19 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/matzehuels/stacktower/pkg/cache"
 	"github.com/matzehuels/stacktower/pkg/integrations"
 )
+
+// PackageDependency holds a NuGet package dependency with its version constraint.
+type PackageDependency struct {
+	Name       string // Package name (e.g., "Newtonsoft.Json")
+	Constraint string // NuGet version range (e.g., "[1.0, 2.0)", "13.0.3"), empty means any
+}
 
 // PackageInfo holds metadata for a .NET package from NuGet.org.
 //
@@ -23,14 +30,14 @@ import (
 // Zero values: All string fields are empty, Dependencies is nil.
 // This struct is safe for concurrent reads after construction.
 type PackageInfo struct {
-	Name          string   // Package name as published (e.g., "Newtonsoft.Json", never empty in valid info)
-	Version       string   // Latest version (e.g., "13.0.3", never empty in valid info)
-	Dependencies  []string // Runtime dependency names (nil or empty if none)
-	ProjectURL    string   // Project URL from metadata (may be empty)
-	RepositoryURL string   // Source repository URL from .nuspec (may be empty)
-	Description   string   // Package description (may be empty)
-	LicenseURL    string   // License URL (may be empty)
-	Authors       string   // Comma-separated author names (may be empty)
+	Name          string              // Package name as published (e.g., "Newtonsoft.Json", never empty in valid info)
+	Version       string              // Latest version (e.g., "13.0.3", never empty in valid info)
+	Dependencies  []PackageDependency // Runtime dependencies with version constraints (nil or empty if none)
+	ProjectURL    string              // Project URL from metadata (may be empty)
+	RepositoryURL string              // Source repository URL from .nuspec (may be empty)
+	Description   string              // Package description (may be empty)
+	LicenseURL    string              // License URL (may be empty)
+	Authors       string              // Comma-separated author names (may be empty)
 }
 
 // Client provides access to the NuGet.org package registry API.
@@ -51,8 +58,9 @@ type Client struct {
 //
 // The returned Client is safe for concurrent use.
 func NewClient(backend cache.Cache, cacheTTL time.Duration) *Client {
+	rl := integrations.DefaultRateLimits["nuget"]
 	return &Client{
-		Client:          integrations.NewClient(backend, "nuget:", cacheTTL, nil),
+		Client:          integrations.NewClientWithRateLimit(backend, "nuget:", cacheTTL, nil, rl.RequestsPerSecond, rl.Burst),
 		baseURL:         "https://api.nuget.org/v3-flatcontainer",
 		registrationURL: "https://api.nuget.org/v3/registration5-semver1",
 	}
@@ -62,9 +70,12 @@ func NewClient(backend cache.Cache, cacheTTL time.Duration) *Client {
 // This implements deps.VersionLister for PubGrub-based dependency resolution.
 func (c *Client) ListVersions(ctx context.Context, pkg string, refresh bool) ([]string, error) {
 	pkgLower := strings.ToLower(strings.TrimSpace(pkg))
-	versionURL := fmt.Sprintf("%s/%s/index.json", c.baseURL, url.PathEscape(pkgLower))
 	var versionData versionIndexResponse
-	if err := c.Get(ctx, versionURL, &versionData); err != nil {
+	err := c.Cached(ctx, pkgLower+"/versions", refresh, &versionData, func() error {
+		versionURL := fmt.Sprintf("%s/%s/index.json", c.baseURL, url.PathEscape(pkgLower))
+		return c.Get(ctx, versionURL, &versionData)
+	})
+	if err != nil {
 		return nil, err
 	}
 	return versionData.Versions, nil
@@ -77,25 +88,30 @@ func (c *Client) FetchPackageVersion(ctx context.Context, pkg, version string, r
 	version = strings.TrimSpace(version)
 
 	var info PackageInfo
-	registrationURL := fmt.Sprintf("%s/%s/%s.json", c.registrationURL, url.PathEscape(pkgLower), url.PathEscape(version))
+	err := c.Cached(ctx, pkgLower+"@"+version, refresh, &info, func() error {
+		return c.fetchPackageVersion(ctx, pkgLower, version, &info)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &info, nil
+}
+
+// fetchPackageVersion is the uncached implementation used by FetchPackageVersion.
+func (c *Client) fetchPackageVersion(ctx context.Context, pkg, version string, info *PackageInfo) error {
+	registrationURL := fmt.Sprintf("%s/%s/%s.json", c.registrationURL, url.PathEscape(pkg), url.PathEscape(version))
 	var registrationData registrationResponse
 	if err := c.Get(ctx, registrationURL, &registrationData); err != nil {
 		if !errors.Is(err, integrations.ErrNotFound) {
-			return nil, err
+			return err
 		}
-		if err := c.fetchNuspecMetadata(ctx, pkgLower, version, &info); err != nil {
-			return nil, err
-		}
-		return &info, nil
+		return c.fetchNuspecMetadata(ctx, pkg, version, info)
 	}
 
 	var catalogData catalogEntry
 	if registrationData.CatalogEntry != "" {
 		if err := c.Get(ctx, registrationData.CatalogEntry, &catalogData); err != nil {
-			if err2 := c.fetchNuspecMetadata(ctx, pkgLower, version, &info); err2 != nil {
-				return nil, err
-			}
-			return &info, nil
+			return c.fetchNuspecMetadata(ctx, pkg, version, info)
 		}
 	}
 
@@ -109,8 +125,8 @@ func (c *Client) FetchPackageVersion(ctx context.Context, pkg, version string, r
 	info.LicenseURL = catalogData.LicenseURL
 	info.Authors = catalogData.Authors
 	info.Dependencies = extractDependencies(catalogData.DependencyGroups)
-	info.RepositoryURL = c.fetchRepositoryURL(ctx, pkgLower, version)
-	return &info, nil
+	info.RepositoryURL = c.fetchRepositoryURL(ctx, pkg, version)
+	return nil
 }
 
 // FetchPackage retrieves metadata for a .NET package from NuGet.org.
@@ -296,7 +312,8 @@ func findLatestStableVersion(versions []string) string {
 	return versions[len(versions)-1]
 }
 
-// extractDependencies parses dependency groups and returns a flat list of dependency names.
+// extractDependencies parses dependency groups and returns a flat list of dependencies
+// with their version constraints.
 //
 // NuGet packages can have different dependencies for different target frameworks.
 // This function selects the dependency group for the newest/most modern target framework
@@ -308,7 +325,7 @@ func findLatestStableVersion(versions []string) string {
 //
 // Framework-agnostic dependencies (empty or "any" targetFramework) are returned immediately
 // as they apply to all frameworks.
-func extractDependencies(groups []dependencyGroup) []string {
+func extractDependencies(groups []dependencyGroup) []PackageDependency {
 	if len(groups) == 0 {
 		return nil
 	}
@@ -350,15 +367,15 @@ func extractDependencies(groups []dependencyGroup) []string {
 	return nil
 }
 
-func dependenciesFromGroup(group dependencyGroup) []string {
+func dependenciesFromGroup(group dependencyGroup) []PackageDependency {
 	if len(group.Dependencies) == 0 {
 		return nil
 	}
-	deps := make([]string, 0, len(group.Dependencies))
+	pkgDeps := make([]PackageDependency, 0, len(group.Dependencies))
 	for _, dep := range group.Dependencies {
-		deps = append(deps, dep.ID)
+		pkgDeps = append(pkgDeps, PackageDependency{Name: dep.ID, Constraint: dep.Range})
 	}
-	return deps
+	return pkgDeps
 }
 
 // frameworkRegex extracts framework family and version from target framework strings.
@@ -436,10 +453,10 @@ func compareVersions(v1, v2 string) int {
 	for i := 0; i < maxLen; i++ {
 		var n1, n2 int
 		if i < len(parts1) {
-			fmt.Sscanf(parts1[i], "%d", &n1)
+			n1, _ = strconv.Atoi(parts1[i])
 		}
 		if i < len(parts2) {
-			fmt.Sscanf(parts2[i], "%d", &n2)
+			n2, _ = strconv.Atoi(parts2[i])
 		}
 		if n1 > n2 {
 			return 1
