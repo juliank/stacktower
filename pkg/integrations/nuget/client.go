@@ -529,14 +529,14 @@ type nuspecPackage struct {
 }
 
 type nuspecMetadata struct {
-	ID           string                  `xml:"id"`
-	Version      string                  `xml:"version"`
-	Description  string                  `xml:"description"`
-	Authors      string                  `xml:"authors"`
-	ProjectURL   string                  `xml:"projectUrl"`
-	LicenseURL   string                  `xml:"licenseUrl"`
-	Repository   nuspecRepository        `xml:"repository"`
-	Dependencies nuspecDependencies      `xml:"dependencies"`
+	ID           string             `xml:"id"`
+	Version      string             `xml:"version"`
+	Description  string             `xml:"description"`
+	Authors      string             `xml:"authors"`
+	ProjectURL   string             `xml:"projectUrl"`
+	LicenseURL   string             `xml:"licenseUrl"`
+	Repository   nuspecRepository   `xml:"repository"`
+	Dependencies nuspecDependencies `xml:"dependencies"`
 }
 
 type nuspecRepository struct {
@@ -549,8 +549,8 @@ type nuspecDependencies struct {
 }
 
 type nuspecDependencyGroup struct {
-	TargetFramework string               `xml:"targetFramework,attr"`
-	Dependencies    []nuspecDependency   `xml:"dependency"`
+	TargetFramework string             `xml:"targetFramework,attr"`
+	Dependencies    []nuspecDependency `xml:"dependency"`
 }
 
 type nuspecDependency struct {

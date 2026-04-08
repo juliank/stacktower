@@ -44,7 +44,7 @@ func (f fetcher) Fetch(ctx context.Context, name string, refresh bool) (*deps.Pa
 }
 
 func (f fetcher) FetchVersion(ctx context.Context, name, version string, refresh bool) (*deps.Package, error) {
-	p, err := f.Client.FetchPackageVersion(ctx, name, version, refresh)
+	p, err := f.FetchPackageVersion(ctx, name, version, refresh)
 	if err != nil {
 		return nil, err
 	}

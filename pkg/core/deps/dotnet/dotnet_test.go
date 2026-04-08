@@ -20,7 +20,7 @@ func TestLanguage(t *testing.T) {
 }
 
 func TestNewResolver(t *testing.T) {
-	resolver, err := Language.NewResolver(cache.NewNullCache(), deps.Options{CacheTTL: 1*time.Hour})
+	resolver, err := Language.NewResolver(cache.NewNullCache(), deps.Options{CacheTTL: 1 * time.Hour})
 	if err != nil {
 		t.Fatalf("NewResolver() error = %v", err)
 	}
