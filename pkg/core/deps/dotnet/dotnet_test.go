@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/matzehuels/stacktower/pkg/cache"
-	"github.com/matzehuels/stacktower/pkg/core/dag"
 	"github.com/matzehuels/stacktower/pkg/core/deps"
 )
 
@@ -21,7 +20,7 @@ func TestLanguage(t *testing.T) {
 }
 
 func TestNewResolver(t *testing.T) {
-	resolver, err := Language.NewResolver(cache.NewNullCache(), 1*time.Hour)
+	resolver, err := Language.NewResolver(cache.NewNullCache(), deps.Options{CacheTTL: 1 * time.Hour})
 	if err != nil {
 		t.Fatalf("NewResolver() error = %v", err)
 	}
@@ -138,7 +137,7 @@ func TestPackagesConfig_Parse(t *testing.T) {
 		t.Fatal("result.Graph is nil")
 	}
 
-	g := result.Graph.(*dag.DAG)
+	g := result.Graph
 	if g.NodeCount() != 3 { // root + 2 packages
 		t.Errorf("Graph has %d nodes, want 3", g.NodeCount())
 	}
@@ -191,7 +190,7 @@ func TestCsProj_Parse(t *testing.T) {
 		t.Fatal("result.Graph is nil")
 	}
 
-	g := result.Graph.(*dag.DAG)
+	g := result.Graph
 	if g.NodeCount() != 3 { // root + 2 packages
 		t.Errorf("Graph has %d nodes, want 3", g.NodeCount())
 	}
@@ -242,7 +241,7 @@ func TestDirectoryPackagesProps_Parse(t *testing.T) {
 		t.Fatal("result.Graph is nil")
 	}
 
-	g := result.Graph.(*dag.DAG)
+	g := result.Graph
 	if g.NodeCount() != 3 { // root + 2 packages
 		t.Errorf("Graph has %d nodes, want 3", g.NodeCount())
 	}
@@ -312,7 +311,7 @@ func TestCsProj_Parse_CPM(t *testing.T) {
 		t.Fatal("result.Graph is nil")
 	}
 
-	g := result.Graph.(*dag.DAG)
+	g := result.Graph
 	if g.NodeCount() != 3 { // root + 2 packages
 		t.Errorf("Graph has %d nodes, want 3", g.NodeCount())
 	}
@@ -389,7 +388,7 @@ func TestCsProj_Parse_ProjectReference(t *testing.T) {
 		t.Fatal("result.Graph is nil")
 	}
 
-	g := result.Graph.(*dag.DAG)
+	g := result.Graph
 	// Expected nodes: __project__, Newtonsoft.Json, MyLibrary, Serilog
 	if g.NodeCount() != 4 {
 		t.Errorf("Graph has %d nodes, want 4", g.NodeCount())
@@ -472,7 +471,7 @@ func TestCsProj_Parse_CPM_CaseInsensitive(t *testing.T) {
 	}
 
 	// Verify the version was resolved from CPM despite case mismatch
-	g := result.Graph.(*dag.DAG)
+	g := result.Graph
 	node, ok := g.Node("Newtonsoft.Json")
 	if !ok || node == nil {
 		t.Fatal("Expected Newtonsoft.Json node to exist")

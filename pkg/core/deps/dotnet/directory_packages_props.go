@@ -63,15 +63,19 @@ func (p *DirectoryPackagesProps) Parse(path string, opts deps.Options) (*deps.Ma
 	}, nil
 }
 
-func (p *DirectoryPackagesProps) resolve(ctx context.Context, pkgs []string, opts deps.Options) (*dag.DAG, error) {
+func (p *DirectoryPackagesProps) resolve(ctx context.Context, pkgs []deps.Dependency, opts deps.Options) (*dag.DAG, error) {
 	return resolveTransitive(ctx, p.resolver, pkgs, opts)
 }
 
-func cpmPackageIDs(entries []cpmPackageVersion) []string {
-	ids := make([]string, 0, len(entries))
+func cpmPackageIDs(entries []cpmPackageVersion) []deps.Dependency {
+	ids := make([]deps.Dependency, 0, len(entries))
 	for _, entry := range entries {
 		if entry.Include != "" {
-			ids = append(ids, entry.Include)
+			d := deps.DependencyFromName(entry.Include)
+			if entry.Version != "" {
+				d.Pinned = entry.Version
+			}
+			ids = append(ids, d)
 		}
 	}
 	return ids
