@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/matzehuels/stacktower/pkg/core/dag"
-	"github.com/matzehuels/stacktower/pkg/core/render/tower/feature"
+	"github.com/stacktower-io/stacktower/pkg/core/dag"
+	"github.com/stacktower-io/stacktower/pkg/core/render/tower/feature"
 )
 
 // =============================================================================
@@ -25,8 +25,9 @@ const (
 	StyleHanddrawn = "handdrawn"
 )
 
-// ProjectRootNodeID is the node ID used for the root of manifest-based graphs.
-const ProjectRootNodeID = "__project__"
+// ProjectRootNodeID is an alias for [dag.ProjectRootNodeID] so that callers
+// importing pkg/graph can use the short name without importing pkg/core/dag.
+const ProjectRootNodeID = dag.ProjectRootNodeID
 
 // Node kinds.
 const (

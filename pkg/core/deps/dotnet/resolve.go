@@ -3,8 +3,8 @@ package dotnet
 import (
 	"context"
 
-	"github.com/matzehuels/stacktower/pkg/core/dag"
-	"github.com/matzehuels/stacktower/pkg/core/deps"
+	"github.com/stacktower-io/stacktower/pkg/core/dag"
+	"github.com/stacktower-io/stacktower/pkg/core/deps"
 )
 
 // resolveTransitive fetches transitive dependencies for all direct dependencies.

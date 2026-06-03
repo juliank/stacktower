@@ -9,7 +9,7 @@ import (
 
 	"github.com/contriboss/pubgrub-go"
 
-	"github.com/matzehuels/stacktower/pkg/core/deps"
+	"github.com/stacktower-io/stacktower/pkg/core/deps"
 )
 
 // NuGetMatcher implements constraint matching for NuGet version ranges.

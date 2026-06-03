@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/matzehuels/stacktower/pkg/core/deps"
+	"github.com/stacktower-io/stacktower/pkg/core/deps"
 )
 
 func TestUVLock_Supports(t *testing.T) {
@@ -103,6 +103,7 @@ source = { registry = "https://pypi.org/simple" }
 
 	if result == nil {
 		t.Fatal("Parse() returned nil result")
+		return
 	}
 
 	if result.Type != "uv.lock" {

@@ -1,6 +1,7 @@
 package github
 
 import (
+	"bytes"
 	"context"
 	"crypto/rsa"
 	"crypto/x509"
@@ -210,15 +211,19 @@ func (c *AppClient) RefreshAccessToken(ctx context.Context, refreshToken string)
 	}, nil
 }
 
+// InstallationAccount identifies the GitHub user or organization that owns an installation.
+type InstallationAccount struct {
+	Login string `json:"login"`
+	ID    int64  `json:"id"`
+	Type  string `json:"type"` // "User" or "Organization"
+}
+
 // Installation represents a GitHub App installation.
 type Installation struct {
-	ID      int64 `json:"id"`
-	Account struct {
-		Login string `json:"login"`
-		ID    int64  `json:"id"`
-		Type  string `json:"type"` // "User" or "Organization"
-	} `json:"account"`
-	RepositorySelection string `json:"repository_selection"` // "all" or "selected"
+	ID                  int64               `json:"id"`
+	AppID               int64               `json:"app_id"`
+	Account             InstallationAccount `json:"account"`
+	RepositorySelection string              `json:"repository_selection"` // "all" or "selected"
 	Permissions         struct {
 		Contents string `json:"contents"` // "read" or "write"
 		Metadata string `json:"metadata"` // "read"
@@ -257,20 +262,21 @@ func (c *AppClient) GetUserInstallations(ctx context.Context, userToken string) 
 	return result.Installations, nil
 }
 
-// GetUserInstallation finds the installation for the authenticated user.
-// Returns the first installation accessible to the user, or an error if none found.
+// GetUserInstallation finds the installation of this app for the authenticated user.
+// Filters by the app's own ID to avoid picking up installations from other GitHub Apps.
 func (c *AppClient) GetUserInstallation(ctx context.Context, userToken string) (*Installation, error) {
 	installations, err := c.GetUserInstallations(ctx, userToken)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(installations) == 0 {
-		return nil, fmt.Errorf("no GitHub App installation found for user")
+	for i := range installations {
+		if installations[i].AppID == c.config.AppID {
+			return &installations[i], nil
+		}
 	}
 
-	// Return the first installation (users typically have one personal installation)
-	return &installations[0], nil
+	return nil, fmt.Errorf("no GitHub App installation found for user (app_id=%d, checked %d installations)", c.config.AppID, len(installations))
 }
 
 // InstallationToken represents an installation access token.
@@ -604,12 +610,46 @@ func (c *AppClient) countAllInstallations(ctx context.Context, jwtToken string) 
 	return total, nil
 }
 
+// DeleteInstallation uninstalls the GitHub App from a user or organization account.
+// This requires App JWT authentication and removes all repository access.
+func (c *AppClient) DeleteInstallation(ctx context.Context, installationID int64) error {
+	jwtToken, err := c.generateJWT()
+	if err != nil {
+		return fmt.Errorf("generate JWT: %w", err)
+	}
+
+	url := fmt.Sprintf("https://api.github.com/app/installations/%d", installationID)
+	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+jwtToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 204 No Content = success; 404 = already uninstalled (treat as success)
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("GitHub API error: HTTP %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // RevokeUserToken revokes a user access token, removing the app's authorization.
 // This removes the app from the user's "Authorized GitHub Apps" list.
 func (c *AppClient) RevokeUserToken(ctx context.Context, accessToken string) error {
 	url := fmt.Sprintf("https://api.github.com/applications/%s/grant", c.config.ClientID)
 
-	req, err := http.NewRequestWithContext(ctx, "DELETE", url, strings.NewReader(`{"access_token":"`+accessToken+`"}`))
+	body, err := json.Marshal(map[string]string{"access_token": accessToken})
+	if err != nil {
+		return fmt.Errorf("marshal revoke request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "DELETE", url, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}

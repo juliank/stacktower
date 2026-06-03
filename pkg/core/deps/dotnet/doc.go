@@ -47,6 +47,6 @@
 // NuGet package names are case-insensitive. Package names are normalized to
 // lowercase for API requests but preserve their original casing in results.
 //
-// [nuget]: github.com/matzehuels/stacktower/pkg/integrations/nuget
-// [deps.Language]: github.com/matzehuels/stacktower/pkg/core/deps.Language
+// [nuget]: github.com/stacktower-io/stacktower/pkg/integrations/nuget
+// [deps.Language]: github.com/stacktower-io/stacktower/pkg/core/deps.Language
 package dotnet

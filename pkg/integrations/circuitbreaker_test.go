@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/matzehuels/stacktower/pkg/observability"
+	"github.com/stacktower-io/stacktower/pkg/observability"
 )
 
 func TestCircuitBreakerInitialState(t *testing.T) {
@@ -87,6 +87,25 @@ func TestCircuitBreakerTransitionsToHalfOpenAfterCooldown(t *testing.T) {
 	}
 	if cb.State() != observability.CircuitHalfOpen {
 		t.Errorf("expected circuit to be half-open, got %s", cb.State())
+	}
+}
+
+func TestCircuitBreakerAllowsOnlyOneHalfOpenProbe(t *testing.T) {
+	ctx := context.Background()
+	config := CircuitBreakerConfig{
+		Threshold: 1,
+		Cooldown:  10 * time.Millisecond,
+	}
+	cb := NewCircuitBreaker("test", config)
+
+	cb.RecordFailure(ctx, 0)
+	time.Sleep(20 * time.Millisecond)
+
+	if !cb.Allow(ctx) {
+		t.Fatal("expected first request after cooldown to be allowed as probe")
+	}
+	if cb.Allow(ctx) {
+		t.Fatal("expected second half-open request to be rejected while probe is active")
 	}
 }
 

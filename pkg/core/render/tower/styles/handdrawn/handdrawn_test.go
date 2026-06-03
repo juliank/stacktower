@@ -5,13 +5,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/matzehuels/stacktower/pkg/core/render/tower/styles"
+	"github.com/stacktower-io/stacktower/pkg/core/render/tower/styles"
 )
 
 func TestNew(t *testing.T) {
 	h := New(42)
 	if h == nil {
 		t.Fatal("New() returned nil")
+		return
 	}
 	if h.seed != 42 {
 		t.Errorf("seed = %d, want 42", h.seed)
@@ -27,7 +28,7 @@ func TestHandDrawn_RenderDefs(t *testing.T) {
 	if !strings.Contains(output, "<defs>") {
 		t.Error("RenderDefs() missing <defs> tag")
 	}
-	if !strings.Contains(output, "xkcd Script") {
+	if !strings.Contains(output, "Gaegu") {
 		t.Error("RenderDefs() missing font-face declaration")
 	}
 	if !strings.Contains(output, "data:font/woff;base64,") {
@@ -135,7 +136,7 @@ func TestHandDrawn_RenderText(t *testing.T) {
 	if !strings.Contains(output, `<text`) {
 		t.Errorf("RenderText() missing text element: %s", output)
 	}
-	if !strings.Contains(output, "xkcd Script") {
+	if !strings.Contains(output, "Gaegu") {
 		t.Errorf("RenderText() missing font family: %s", output)
 	}
 }

@@ -1,11 +1,43 @@
 package cli
 
 import (
+	"os"
 	"testing"
 
-	"github.com/matzehuels/stacktower/pkg/graph"
-	"github.com/matzehuels/stacktower/pkg/pipeline"
+	"github.com/stacktower-io/stacktower/pkg/graph"
+	"github.com/stacktower-io/stacktower/pkg/pipeline"
 )
+
+func TestReadRenderInputStdin(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	defer r.Close()
+
+	graphJSON := `{"nodes":[{"id":"app"},{"id":"dep"}],"edges":[{"from":"app","to":"dep"}]}`
+	if _, err := w.WriteString(graphJSON); err != nil {
+		t.Fatalf("write stdin data: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	origStdin := os.Stdin
+	os.Stdin = r
+	defer func() { os.Stdin = origStdin }()
+
+	g, err := loadGraph("-")
+	if err != nil {
+		t.Fatalf("loadGraph(-) error = %v", err)
+	}
+	if g.NodeCount() != 2 {
+		t.Fatalf("NodeCount = %d, want 2", g.NodeCount())
+	}
+	if g.EdgeCount() != 1 {
+		t.Fatalf("EdgeCount = %d, want 1", g.EdgeCount())
+	}
+}
 
 func TestParseFormats(t *testing.T) {
 	tests := []struct {
@@ -16,6 +48,7 @@ func TestParseFormats(t *testing.T) {
 		{"empty defaults to svg", "", []string{"svg"}},
 		{"single format", "svg", []string{"svg"}},
 		{"multiple formats", "svg,pdf,png", []string{"svg", "pdf", "png"}},
+		{"multiple formats with spaces", "svg, pdf , png", []string{"svg", "pdf", "png"}},
 		{"pdf only", "pdf", []string{"pdf"}},
 	}
 
@@ -84,22 +117,14 @@ func TestValidateStyle(t *testing.T) {
 	}
 }
 
-func TestValidFormatsMap(t *testing.T) {
-	expected := map[string]bool{
-		"svg":  true,
-		"pdf":  true,
-		"png":  true,
-		"json": true,
-	}
-
-	for k, v := range expected {
-		if pipeline.ValidFormats[k] != v {
-			t.Errorf("ValidFormats[%q] = %v, want %v", k, pipeline.ValidFormats[k], v)
+func TestIsValidFormat(t *testing.T) {
+	for _, f := range []string{"svg", "pdf", "png", "json"} {
+		if !pipeline.IsValidFormat(f) {
+			t.Errorf("IsValidFormat(%q) = false, want true", f)
 		}
 	}
-
-	if pipeline.ValidFormats["invalid"] {
-		t.Error("ValidFormats[invalid] should be false")
+	if pipeline.IsValidFormat("invalid") {
+		t.Error("IsValidFormat(\"invalid\") should be false")
 	}
 }
 

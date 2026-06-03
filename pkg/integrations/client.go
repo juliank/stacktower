@@ -16,13 +16,15 @@ import (
 	"golang.org/x/sync/singleflight"
 	"golang.org/x/time/rate"
 
-	"github.com/matzehuels/stacktower/pkg/cache"
-	"github.com/matzehuels/stacktower/pkg/observability"
+	"github.com/stacktower-io/stacktower/pkg/cache"
+	"github.com/stacktower-io/stacktower/pkg/observability"
 )
 
-// MaxResponseSize is the maximum allowed HTTP response body size (10MB).
+// MaxResponseSize is the maximum allowed HTTP response body size (25MB).
 // Responses larger than this are rejected to prevent memory exhaustion.
-const MaxResponseSize = 10 * 1024 * 1024
+// Set to 25MB to accommodate large PyPI project metadata (e.g., pydantic-core
+// has >10MB of release file metadata across all platforms/versions).
+const MaxResponseSize = 25 * 1024 * 1024
 
 // Client provides shared HTTP functionality for all registry API clients.
 // It handles caching, retry logic, request deduplication, proactive rate limiting,
@@ -218,7 +220,15 @@ func (c *Client) GetWithHeaders(ctx context.Context, url string, headers map[str
 	// Limit response size to prevent memory exhaustion from large/malicious responses
 	limited := &io.LimitedReader{R: body, N: MaxResponseSize + 1}
 	if err := json.NewDecoder(limited).Decode(v); err != nil {
-		return err
+		if limited.N <= 0 {
+			return fmt.Errorf("response exceeds maximum size of %d bytes", MaxResponseSize)
+		}
+		// EOF-family errors during body read indicate a truncated response
+		// (connection dropped, server closed early). Treat as retryable network error.
+		if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
+			return cache.Retryable(fmt.Errorf("%w: %s: %v", ErrNetwork, url, err))
+		}
+		return fmt.Errorf("decode response from %s: %w", url, err)
 	}
 	if limited.N <= 0 {
 		return fmt.Errorf("response exceeds maximum size of %d bytes", MaxResponseSize)
@@ -254,6 +264,9 @@ func (c *Client) GetText(ctx context.Context, url string) (string, error) {
 	limited := io.LimitReader(body, MaxResponseSize+1)
 	data, err := io.ReadAll(limited)
 	if err != nil {
+		if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
+			return "", cache.Retryable(fmt.Errorf("%w: %s: %v", ErrNetwork, url, err))
+		}
 		return "", err
 	}
 	if len(data) > MaxResponseSize {
@@ -279,7 +292,13 @@ func (c *Client) PostJSON(ctx context.Context, url string, body any, v any) erro
 	// Limit response size to prevent memory exhaustion
 	limited := &io.LimitedReader{R: respBody, N: MaxResponseSize + 1}
 	if err := json.NewDecoder(limited).Decode(v); err != nil {
-		return err
+		if limited.N <= 0 {
+			return fmt.Errorf("response exceeds maximum size of %d bytes", MaxResponseSize)
+		}
+		if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
+			return cache.Retryable(fmt.Errorf("%w: %s: %v", ErrNetwork, url, err))
+		}
+		return fmt.Errorf("decode response from %s: %w", url, err)
 	}
 	if limited.N <= 0 {
 		return fmt.Errorf("response exceeds maximum size of %d bytes", MaxResponseSize)
@@ -366,25 +385,38 @@ func (c *Client) doRequestWithBody(ctx context.Context, method, reqURL string, b
 
 func checkResponse(resp *http.Response) error {
 	switch {
-	case resp.StatusCode == http.StatusOK:
+	case resp.StatusCode >= 200 && resp.StatusCode < 300:
 		return nil
 	case resp.StatusCode == http.StatusNotFound:
 		return ErrNotFound
 	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
 		return ErrUnauthorized
 	case resp.StatusCode == http.StatusTooManyRequests:
-		retryAfter := 0
-		if v := resp.Header.Get("Retry-After"); v != "" {
-			if seconds, err := strconv.Atoi(v); err == nil {
-				retryAfter = seconds
-			}
-		}
+		retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
 		return cache.Retryable(&RateLimitedError{RetryAfter: retryAfter})
 	case resp.StatusCode >= 500:
 		return cache.Retryable(fmt.Errorf("%w: status %d", ErrNetwork, resp.StatusCode))
 	default:
 		return fmt.Errorf("%w: status %d", ErrNetwork, resp.StatusCode)
 	}
+}
+
+// parseRetryAfter parses the Retry-After header value, which may be either
+// a number of seconds or an HTTP-date (RFC 7231).
+func parseRetryAfter(value string) int {
+	if value == "" {
+		return 0
+	}
+	if seconds, err := strconv.Atoi(value); err == nil {
+		return seconds
+	}
+	if t, err := http.ParseTime(value); err == nil {
+		delay := int(time.Until(t).Seconds())
+		if delay > 0 {
+			return delay
+		}
+	}
+	return 0
 }
 
 // RateLimitedError indicates the API rate limit has been exceeded.

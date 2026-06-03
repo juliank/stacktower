@@ -10,9 +10,9 @@ import (
 	"github.com/contriboss/pubgrub-go"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/matzehuels/stacktower/pkg/core/dag"
-	"github.com/matzehuels/stacktower/pkg/core/deps/constraints"
-	"github.com/matzehuels/stacktower/pkg/observability"
+	"github.com/stacktower-io/stacktower/pkg/core/dag"
+	"github.com/stacktower-io/stacktower/pkg/core/deps/constraints"
+	"github.com/stacktower-io/stacktower/pkg/observability"
 )
 
 // anyVersionCondition matches any version using "*" wildcard
@@ -148,9 +148,14 @@ func (r *PubGrubResolver) Resolve(ctx context.Context, pkg string, opts Options)
 		seen:           make(map[string]bool),
 		depth:          make(map[string]int),
 		hintedVersions: make(map[string]map[string]bool),
+		prereleaseDeps: make(map[string]bool),
+		prefetchSem:    make(chan struct{}, 10),
 	}
-	// Clear source cache after resolution to free memory from accumulated Package structs
-	defer source.clearCache()
+	// Wait for speculative prefetches and clear cache after resolution.
+	defer func() {
+		source.prefetchWg.Wait()
+		source.clearCache()
+	}()
 
 	source.allowPackage(pkg, 0)
 
@@ -246,7 +251,7 @@ func (r *PubGrubResolver) solutionToDAG(
 		for name, version := range resolved {
 			jobs = append(jobs, packageFetchJob{name: name, version: version})
 		}
-		results := ParallelMapOrdered(ctx, opts.Workers, jobs, func(ctx context.Context, j packageFetchJob) packageFetchResult {
+		results, err := ParallelMapOrdered(ctx, opts.Workers, jobs, func(ctx context.Context, j packageFetchJob) packageFetchResult {
 			pkg, err := source.getPackage(j.name, j.version)
 			return packageFetchResult{
 				name:    j.name,
@@ -255,6 +260,9 @@ func (r *PubGrubResolver) solutionToDAG(
 				err:     err,
 			}
 		})
+		if err != nil {
+			opts.Logger("parallel fetch cancelled: %v", err)
+		}
 
 		for _, res := range results {
 			if res.err != nil {
@@ -308,11 +316,21 @@ func (r *PubGrubResolver) solutionToDAG(
 			enriched = r.enrichParallel(ctx, packages, depths, opts)
 		}
 
-		// Apply enrichment results to DAG nodes, merging with base metadata
+		// Apply enrichment results to DAG nodes, merging with base metadata.
+		// Some ecosystem adapters (notably npm) may use solver/package IDs that
+		// differ from the real registry package name. Preserve both in metadata.
 		for name, pkg := range packages {
 			if n, ok := g.Node(name); ok {
 				meta := pkg.Metadata()
-				if extra, ok := enriched[name]; ok {
+				if pkg.Name != "" && pkg.Name != name {
+					meta["name"] = pkg.Name
+					meta["solver_id"] = name
+				}
+				extra, ok := enriched[name]
+				if !ok && pkg.Name != name {
+					extra, ok = enriched[pkg.Name]
+				}
+				if ok {
 					maps.Copy(meta, extra)
 				}
 				n.Meta = meta
@@ -321,7 +339,12 @@ func (r *PubGrubResolver) solutionToDAG(
 	} else {
 		for name, pkg := range packages {
 			if n, ok := g.Node(name); ok {
-				n.Meta = pkg.Metadata()
+				meta := pkg.Metadata()
+				if pkg.Name != "" && pkg.Name != name {
+					meta["name"] = pkg.Name
+					meta["solver_id"] = name
+				}
+				n.Meta = meta
 			}
 		}
 	}
@@ -464,20 +487,21 @@ func (r *PubGrubResolver) enrichParallel(
 	opts Options,
 ) map[string]map[string]any {
 	type enrichJob struct {
-		pkg   *Package
-		depth int
+		nodeName string
+		pkg      *Package
+		depth    int
 	}
 
 	workers := min(DefaultWorkers, len(packages))
 	jobs := make([]enrichJob, 0, len(packages))
-	for _, pkg := range packages {
-		jobs = append(jobs, enrichJob{pkg: pkg, depth: depths[pkg.Name]})
+	for nodeName, pkg := range packages {
+		jobs = append(jobs, enrichJob{nodeName: nodeName, pkg: pkg, depth: depths[nodeName]})
 	}
-	results := ParallelMapOrdered(ctx, workers, jobs, func(ctx context.Context, j enrichJob) enrichResult {
+	results, _ := ParallelMapOrdered(ctx, workers, jobs, func(ctx context.Context, j enrichJob) enrichResult {
 		observability.ResolverFromContext(ctx).OnFetchStart(ctx, j.pkg.Name, j.depth)
 		meta := r.enrich(ctx, j.pkg, opts)
 		observability.ResolverFromContext(ctx).OnFetchComplete(ctx, j.pkg.Name, j.depth, 0, nil)
-		return enrichResult{name: j.pkg.Name, meta: meta}
+		return enrichResult{name: j.nodeName, meta: meta}
 	})
 
 	combined := make(map[string]map[string]any, len(packages))
@@ -556,8 +580,19 @@ type pubgrubSource struct {
 	// includes these so PubGrub can find them even if the registry doesn't list them.
 	hintedVersions map[string]map[string]bool // package name -> set of version strings
 
+	// prereleaseDeps records packages whose incoming constraint explicitly
+	// mentions a prerelease. npm allows prerelease versions in that case even
+	// when prereleases are otherwise excluded globally.
+	prereleaseDeps map[string]bool
+
 	// fetchGroup deduplicates concurrent fetches for the same package@version.
 	fetchGroup singleflight.Group
+
+	// prefetchWg tracks in-flight speculative prefetch goroutines so they can
+	// be awaited before the resolver returns.
+	prefetchWg sync.WaitGroup
+	// prefetchSem bounds the number of concurrent prefetch goroutines.
+	prefetchSem chan struct{}
 }
 
 // GetVersions returns all available versions for a package.
@@ -587,9 +622,10 @@ func (s *pubgrubSource) GetVersions(name pubgrub.Name) ([]pubgrub.Version, error
 
 	seen := make(map[string]bool, len(versions))
 	result := make([]pubgrub.Version, 0, len(versions))
+	includePrerelease := s.opts.IncludePrerelease || s.allowPrereleaseFor(name.Value())
 	for _, v := range versions {
 		// Filter prerelease versions if not included
-		if !s.opts.IncludePrerelease && IsPrereleaseVersion(v) {
+		if !includePrerelease && IsPrereleaseVersion(v) {
 			continue
 		}
 		// Filter runtime-incompatible versions when constraint data is available.
@@ -613,7 +649,7 @@ func (s *pubgrubSource) GetVersions(name pubgrub.Name) ([]pubgrub.Version, error
 		if err != nil {
 			return nil, err
 		}
-		if pkg.Version != "" && (s.opts.IncludePrerelease || !IsPrereleaseVersion(pkg.Version)) {
+		if pkg.Version != "" && (includePrerelease || !IsPrereleaseVersion(pkg.Version)) {
 			pv := s.parser.ParseVersion(pkg.Version)
 			if pv != nil {
 				result = append(result, pv)
@@ -628,7 +664,7 @@ func (s *pubgrubSource) GetVersions(name pubgrub.Name) ([]pubgrub.Version, error
 	hints := s.hintedVersions[name.Value()]
 	s.mu.Unlock()
 	for vStr := range hints {
-		if !seen[vStr] && (s.opts.IncludePrerelease || !IsPrereleaseVersion(vStr)) {
+		if !seen[vStr] && (includePrerelease || !IsPrereleaseVersion(vStr)) {
 			pv := s.parser.ParseVersion(vStr)
 			if pv != nil {
 				result = append(result, pv)
@@ -682,6 +718,9 @@ func (s *pubgrubSource) GetDependencies(name pubgrub.Name, version pubgrub.Versi
 		if eq, ok := cond.(pubgrub.EqualsCondition); ok {
 			s.hintVersion(dep.Name, eq.Version.String())
 		}
+		if dep.Constraint != "" && IsPrereleaseVersion(dep.Constraint) {
+			s.allowPrerelease(dep.Name)
+		}
 		// Allow language-specific parsers to hint versions from constraints.
 		// This is needed for ecosystems like Go where constraints reference
 		// pseudo-versions that don't appear in the registry's version list.
@@ -692,7 +731,48 @@ func (s *pubgrubSource) GetDependencies(name pubgrub.Name, version pubgrub.Versi
 		}
 		terms = append(terms, pubgrub.NewTerm(pubgrub.MakeName(dep.Name), cond))
 	}
+
+	// Speculatively prefetch version lists for discovered dependencies so they
+	// land in the Cached layer before PubGrub's next GetVersions call.
+	s.prefetchDeps(pkg.Dependencies)
+
 	return terms, nil
+}
+
+// prefetchDeps fires bounded background goroutines to warm the cache with
+// version lists for newly discovered dependencies. The data lands in the
+// integrations.Client Cached layer, turning the next GetVersions into a
+// cache hit instead of a blocking HTTP round trip.
+func (s *pubgrubSource) prefetchDeps(dependencies []Dependency) {
+	const maxPrefetch = 5
+
+	var toFetch []string
+	for _, dep := range dependencies {
+		s.mu.Lock()
+		_, known := s.depth[dep.Name]
+		s.mu.Unlock()
+		if !known {
+			toFetch = append(toFetch, dep.Name)
+		}
+		if len(toFetch) >= maxPrefetch {
+			break
+		}
+	}
+
+	for _, name := range toFetch {
+		name := name
+		s.prefetchWg.Add(1)
+		go func() {
+			defer s.prefetchWg.Done()
+			select {
+			case s.prefetchSem <- struct{}{}:
+				defer func() { <-s.prefetchSem }()
+			case <-s.ctx.Done():
+				return
+			}
+			_, _ = s.lister.ListVersions(s.ctx, name, s.opts.Refresh)
+		}()
+	}
 }
 
 func (s *pubgrubSource) packageDepth(name string) (int, bool) {
@@ -740,6 +820,18 @@ func (s *pubgrubSource) hintVersion(pkg, version string) {
 	s.hintedVersions[pkg][version] = true
 }
 
+func (s *pubgrubSource) allowPrerelease(pkg string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.prereleaseDeps[pkg] = true
+}
+
+func (s *pubgrubSource) allowPrereleaseFor(pkg string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.prereleaseDeps[pkg]
+}
+
 // clearCache releases memory held by the package cache after resolution completes.
 // This prevents accumulation of Package structs for long-lived resolver instances.
 func (s *pubgrubSource) clearCache() {
@@ -749,6 +841,7 @@ func (s *pubgrubSource) clearCache() {
 	s.seen = nil
 	s.depth = nil
 	s.hintedVersions = nil
+	s.prereleaseDeps = nil
 }
 
 // getPackage fetches and caches a package by name and version.
