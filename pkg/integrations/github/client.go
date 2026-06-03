@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/matzehuels/stacktower/pkg/cache"
-	"github.com/matzehuels/stacktower/pkg/integrations"
+	"github.com/stacktower-io/stacktower/pkg/cache"
+	"github.com/stacktower-io/stacktower/pkg/integrations"
 )
 
 var repoURLPattern = regexp.MustCompile(`https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?(?:[/?#]|$)`)
@@ -38,17 +38,19 @@ type Client struct {
 // The returned Client is safe for concurrent use.
 func NewClient(backend cache.Cache, token string, cacheTTL time.Duration) *Client {
 	headers := map[string]string{"Accept": "application/vnd.github.v3+json"}
+	namespace := "github:unauth:"
 
 	var rl integrations.RateLimit
 	if token != "" {
 		headers["Authorization"] = "Bearer " + token
 		rl = integrations.DefaultRateLimits["github"]
+		namespace = "github:auth:" + cache.Hash([]byte(token)) + ":"
 	} else {
 		rl = integrations.DefaultRateLimits["github_unauth"]
 	}
 
 	return &Client{
-		Client:  integrations.NewClientWithRateLimit(backend, "github:", cacheTTL, headers, rl.RequestsPerSecond, rl.Burst),
+		Client:  integrations.NewClientWithRateLimit(backend, namespace, cacheTTL, headers, rl.RequestsPerSecond, rl.Burst),
 		baseURL: "https://api.github.com",
 	}
 }
@@ -110,22 +112,30 @@ func (c *Client) fetchMetrics(ctx context.Context, owner, repo string, m *integr
 		m.LastCommitAt = data.PushedAt
 	}
 
-	// Fetch release and contributors in parallel (both are optional/best-effort)
-	var wg sync.WaitGroup
+	// Fetch release and contributors in parallel (both are optional/best-effort).
+	// Results are collected in locals to avoid concurrent writes to m.
+	var (
+		wg           sync.WaitGroup
+		releaseAt    *time.Time
+		contributors []integrations.Contributor
+	)
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		if rel, err := c.fetchRelease(ctx, owner, repo); err == nil {
-			m.LastReleaseAt = &rel.PublishedAt
+			releaseAt = &rel.PublishedAt
 		}
 	}()
 	go func() {
 		defer wg.Done()
 		if contribs, err := c.fetchContributors(ctx, owner, repo); err == nil {
-			m.Contributors = contribs
+			contributors = contribs
 		}
 	}()
 	wg.Wait()
+
+	m.LastReleaseAt = releaseAt
+	m.Contributors = contributors
 
 	return nil
 }

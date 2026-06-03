@@ -5,15 +5,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/matzehuels/stacktower/pkg/cache"
-	"github.com/matzehuels/stacktower/pkg/integrations/crates"
-	"github.com/matzehuels/stacktower/pkg/integrations/goproxy"
-	"github.com/matzehuels/stacktower/pkg/integrations/maven"
-	"github.com/matzehuels/stacktower/pkg/integrations/npm"
-	"github.com/matzehuels/stacktower/pkg/integrations/packagist"
-	"github.com/matzehuels/stacktower/pkg/integrations/pypi"
-	"github.com/matzehuels/stacktower/pkg/integrations/rubygems"
-	"github.com/matzehuels/stacktower/pkg/observability"
+	"github.com/stacktower-io/stacktower/pkg/cache"
+	"github.com/stacktower-io/stacktower/pkg/integrations/crates"
+	"github.com/stacktower-io/stacktower/pkg/integrations/goproxy"
+	"github.com/stacktower-io/stacktower/pkg/integrations/maven"
+	"github.com/stacktower-io/stacktower/pkg/integrations/npm"
+	"github.com/stacktower-io/stacktower/pkg/integrations/packagist"
+	"github.com/stacktower-io/stacktower/pkg/integrations/pypi"
+	"github.com/stacktower-io/stacktower/pkg/integrations/rubygems"
+	"github.com/stacktower-io/stacktower/pkg/observability"
 )
 
 // defaultChunkSize is the number of packages to process per chunk.
@@ -52,21 +52,20 @@ func fetchURLsChunked(
 		}
 		chunk := names[i:end]
 
-		results := ParallelMapOrdered(ctx, workers, chunk, func(ctx context.Context, name string) urlFetchResult {
+		results, err := ParallelMapOrdered(ctx, workers, chunk, func(ctx context.Context, name string) urlFetchResult {
 			hooks.OnFetchStart(ctx, name, 0)
 			result := fetchFn(ctx, name)
 			hooks.OnFetchComplete(ctx, name, 0, 0, nil)
 			return result
 		})
+		if err != nil {
+			break
+		}
 
 		for _, r := range results {
 			if r.ok {
 				urlMap[r.name] = r.urls
 			}
-		}
-
-		if ctx.Err() != nil {
-			break
 		}
 	}
 

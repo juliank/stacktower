@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/matzehuels/stacktower/pkg/core/dag"
-	"github.com/matzehuels/stacktower/pkg/observability"
+	"github.com/stacktower-io/stacktower/pkg/core/dag"
+	"github.com/stacktower-io/stacktower/pkg/observability"
 )
 
 // ManifestParser reads dependency information from local manifest files.
@@ -243,9 +243,9 @@ func NormalizeLanguageName(name string, languages []*Language) string {
 	return lower
 }
 
-// ProjectRootNodeID is the conventional node ID for the virtual project root
-// in manifest-based dependency graphs.
-const ProjectRootNodeID = "__project__"
+// ProjectRootNodeID is an alias for [dag.ProjectRootNodeID] so that callers
+// within the deps package (and its sub-packages) can use the short name.
+const ProjectRootNodeID = dag.ProjectRootNodeID
 
 // ResolveAndMerge resolves each dependency via the resolver and merges the
 // results into a single DAG with a virtual project root. Dependencies that

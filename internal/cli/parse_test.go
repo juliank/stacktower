@@ -5,7 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/matzehuels/stacktower/pkg/core/deps/languages"
+	"github.com/stacktower-io/stacktower/pkg/core/dag"
+	"github.com/stacktower-io/stacktower/pkg/core/deps/languages"
 )
 
 func TestLooksLikeFile(t *testing.T) {
@@ -207,7 +208,7 @@ func TestValidatePackageName(t *testing.T) {
 				return
 			}
 			if err != nil && tt.errMsg != "" {
-				if !containsSubstring(err.Error(), tt.errMsg) {
+				if !strings.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("error = %q, should contain %q", err.Error(), tt.errMsg)
 				}
 			}
@@ -238,11 +239,78 @@ func TestValidatePackageName_SecurityBoundaries(t *testing.T) {
 	}
 }
 
-func containsSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
+func TestSuggestOutputName(t *testing.T) {
+	tests := []struct {
+		name    string
+		rootID  string
+		version string
+		ref     string
+		want    string
+	}{
+		{"registry with version", "flask", "3.1.0", "", "flask-3.1.0.json"},
+		{"github with ref tag", "myrepo", "", "v2.0.0", "myrepo-v2.0.0.json"},
+		{"github with branch", "myrepo", "", "main", "myrepo-main.json"},
+		{"github with slash in ref", "myrepo", "", "feature/foo", "myrepo-feature-foo.json"},
+		{"no version or ref", "flask", "", "", "flask.json"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := dag.New(nil)
+			meta := dag.Metadata{}
+			if tt.version != "" {
+				meta["version"] = tt.version
+			}
+			g.AddNode(dag.Node{ID: tt.rootID, Row: 0, Meta: meta})
+
+			got := suggestOutputName(g, tt.ref)
+			if got != tt.want {
+				t.Errorf("suggestOutputName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSanitizeFilenameSegment(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"v2.0.0", "v2.0.0"},
+		{"feature/branch", "feature-branch"},
+		{"refs/tags/v1", "refs-tags-v1"},
+		{"some:thing", "some-thing"},
+	}
+	for _, tt := range tests {
+		got := sanitizeFilenameSegment(tt.input)
+		if got != tt.want {
+			t.Errorf("sanitizeFilenameSegment(%q) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
-	return false
+}
+
+func TestFormatSupportedManifests_IncludesRegisteredAndExtraLanguages(t *testing.T) {
+	manifestMap := map[string]string{
+		"poetry.lock":   "python",
+		"go.mod":        "go",
+		"foo.lock":      "foo-lang",
+		"foo-extra.yml": "foo-lang",
+	}
+
+	got := formatSupportedManifests(manifestMap)
+
+	parts := strings.Split(got, ", ")
+	expected := []string{"go.mod", "poetry.lock", "foo-extra.yml", "foo.lock"}
+	for _, want := range expected {
+		found := false
+		for _, part := range parts {
+			if part == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("formatSupportedManifests() missing %q in %q", want, got)
+		}
+	}
 }

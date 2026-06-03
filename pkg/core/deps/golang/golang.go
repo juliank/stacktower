@@ -6,11 +6,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/matzehuels/stacktower/pkg/cache"
-	"github.com/matzehuels/stacktower/pkg/core/dag"
-	"github.com/matzehuels/stacktower/pkg/core/deps"
-	"github.com/matzehuels/stacktower/pkg/integrations"
-	"github.com/matzehuels/stacktower/pkg/integrations/goproxy"
+	"github.com/stacktower-io/stacktower/pkg/cache"
+	"github.com/stacktower-io/stacktower/pkg/core/dag"
+	"github.com/stacktower-io/stacktower/pkg/core/deps"
+	"github.com/stacktower-io/stacktower/pkg/integrations"
+	"github.com/stacktower-io/stacktower/pkg/integrations/goproxy"
 )
 
 // Ensure fetcher implements VersionLister (required by PubGrub resolver).
@@ -153,7 +153,7 @@ func (r *goResolver) resolveLockfileStyle(ctx context.Context, root *goproxy.Mod
 		depSlice = append(depSlice, dep)
 	}
 
-	results := deps.ParallelMapOrdered(ctx, opts.Workers, depSlice, func(ctx context.Context, dep goproxy.Dependency) fetchResult {
+	results, _ := deps.ParallelMapOrdered(ctx, opts.Workers, depSlice, func(ctx context.Context, dep goproxy.Dependency) fetchResult {
 		if ctx.Err() != nil {
 			return fetchResult{name: dep.Name}
 		}
@@ -219,7 +219,7 @@ func (r *goResolver) enrichPackages(ctx context.Context, refs []*deps.PackageRef
 	}
 
 	workers := min(deps.DefaultWorkers, len(refs))
-	results := deps.ParallelMapOrdered(ctx, workers, refs, func(ctx context.Context, ref *deps.PackageRef) enrichResult {
+	results, _ := deps.ParallelMapOrdered(ctx, workers, refs, func(ctx context.Context, ref *deps.PackageRef) enrichResult {
 		meta := make(map[string]any)
 		for _, p := range opts.MetadataProviders {
 			if m, err := p.Enrich(ctx, ref, opts.Refresh); err == nil {

@@ -3,7 +3,7 @@ package transform
 import (
 	"fmt"
 
-	"github.com/matzehuels/stacktower/pkg/core/dag"
+	"github.com/stacktower-io/stacktower/pkg/core/dag"
 )
 
 // Normalize prepares a DAG for tower rendering by applying a sequence of
@@ -99,12 +99,16 @@ func NormalizeWithOptions(g *dag.DAG, opts NormalizeOptions) (result *TransformR
 	AssignLayers(g)
 
 	nodesBefore := g.NodeCount()
-	Subdivide(g)
+	if err := subdivide(g); err != nil {
+		return nil, fmt.Errorf("subdivide graph: %w", err)
+	}
 	result.SubdividersAdded = g.NodeCount() - nodesBefore
 
 	if !opts.SkipSeparators {
 		nodesBefore := g.NodeCount()
-		ResolveSpanOverlaps(g)
+		if err := resolveSpanOverlaps(g); err != nil {
+			return nil, fmt.Errorf("resolve span overlaps: %w", err)
+		}
 		result.SeparatorsAdded = g.NodeCount() - nodesBefore
 	}
 

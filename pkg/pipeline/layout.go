@@ -1,12 +1,12 @@
 package pipeline
 
 import (
-	"github.com/matzehuels/stacktower/pkg/core/dag"
-	"github.com/matzehuels/stacktower/pkg/core/render/nodelink"
-	"github.com/matzehuels/stacktower/pkg/core/render/tower/feature"
-	"github.com/matzehuels/stacktower/pkg/core/render/tower/layout"
-	"github.com/matzehuels/stacktower/pkg/core/render/tower/transform"
-	"github.com/matzehuels/stacktower/pkg/graph"
+	"github.com/stacktower-io/stacktower/pkg/core/dag"
+	"github.com/stacktower-io/stacktower/pkg/core/render/nodelink"
+	"github.com/stacktower-io/stacktower/pkg/core/render/tower/feature"
+	"github.com/stacktower-io/stacktower/pkg/core/render/tower/layout"
+	"github.com/stacktower-io/stacktower/pkg/core/render/tower/transform"
+	"github.com/stacktower-io/stacktower/pkg/graph"
 )
 
 // =============================================================================
@@ -71,7 +71,18 @@ func generateTowerLayout(g *dag.DAG, opts Options) (graph.Layout, error) {
 	l.Nebraska = feature.RankNebraska(workGraph, 10)
 
 	// Export to serialization format
-	return l.Export(workGraph)
+	exported, err := l.Export(workGraph)
+	if err != nil {
+		return exported, err
+	}
+
+	// Record the crossing count on the serialized layout so cache consumers
+	// and diff tooling can read it without re-running the ordering step.
+	if len(exported.Rows) > 0 && len(exported.Edges) > 0 {
+		exported.Crossings = dag.CountCrossings(workGraph, exported.Rows)
+	}
+
+	return exported, nil
 }
 
 // =============================================================================

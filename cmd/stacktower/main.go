@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/matzehuels/stacktower/internal/cli"
-	"github.com/matzehuels/stacktower/internal/cli/ui"
+	"github.com/stacktower-io/stacktower/internal/cli"
+	"github.com/stacktower-io/stacktower/internal/cli/ui"
 )
 
 func main() {
@@ -29,7 +29,10 @@ func run(ctx context.Context) error {
 		quiet   bool
 	)
 
-	c := cli.New(os.Stderr, cli.LogInfo)
+	c, err := cli.New(os.Stderr, cli.LogInfo)
+	if err != nil {
+		return err
+	}
 	root := c.RootCommand()
 
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose logging")

@@ -1,3 +1,15 @@
+//go:build dev
+
+// Package cli – pqtree is a developer-only command for visualizing PQ-tree
+// permutations used by the dependency ordering algorithm. It is not part of
+// the public CLI surface and is only compiled into binaries built with the
+// `dev` build tag (e.g. `go build -tags dev ./cmd/stacktower`). In normal
+// release builds, pqtreeCommand returns a hidden no-op (see pqtree_stub.go)
+// so users never see it in `--help` output and accidental shipping is
+// impossible.
+//
+// If you need this locally: `go run -tags dev ./cmd/stacktower pqtree --help`.
+
 package cli
 
 import (
@@ -7,8 +19,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/matzehuels/stacktower/internal/cli/ui"
-	"github.com/matzehuels/stacktower/pkg/core/dag/perm"
+	"github.com/stacktower-io/stacktower/internal/cli/ui"
+	"github.com/stacktower-io/stacktower/pkg/core/dag/perm"
 )
 
 // pqtreeCommand creates the pqtree command for visualizing PQ-tree constraints.
@@ -17,8 +29,9 @@ func (c *CLI) pqtreeCommand() *cobra.Command {
 	var labels string
 
 	cmd := &cobra.Command{
-		Use:   "pqtree [constraints...]",
-		Short: "Render a PQ-tree with optional constraints (debug tool)",
+		Use:    "pqtree [constraints...]",
+		Short:  "Experimental: render a PQ-tree with optional constraints",
+		Hidden: true,
 		Long: `Render a PQ-tree visualization showing valid permutations.
 
 Constraints are comma-separated indices that must be adjacent.
@@ -34,7 +47,7 @@ Example: "0,1" means elements 0 and 1 must be adjacent.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			labelList := strings.Split(labels, ",")
 			if len(labelList) == 0 {
-				return fmt.Errorf("at least one label required")
+				return NewUserError("at least one label required", "Use --labels A,B,C,D to specify labels.")
 			}
 
 			tree := perm.NewPQTree(len(labelList))
@@ -42,20 +55,23 @@ Example: "0,1" means elements 0 and 1 must be adjacent.`,
 			for _, arg := range args {
 				constraint, err := parseConstraint(arg)
 				if err != nil {
-					return fmt.Errorf("invalid constraint %q: %w", arg, err)
+					return WrapUserError(err, fmt.Sprintf("invalid constraint %q", arg), "Constraints are comma-separated indices, e.g., 0,1")
 				}
 				if !tree.Reduce(constraint) {
-					return fmt.Errorf("constraint %q made tree unsatisfiable", arg)
+					return NewUserError(
+						fmt.Sprintf("constraint %q made tree unsatisfiable", arg),
+						"This constraint conflicts with previous constraints. Check for contradictions.",
+					)
 				}
 			}
 
 			svg, err := tree.RenderSVG(labelList)
 			if err != nil {
-				return fmt.Errorf("render: %w", err)
+				return WrapSystemError(err, "failed to render PQ-tree", "")
 			}
 
 			if err := writeFile(svg, output); err != nil {
-				return fmt.Errorf("write output: %w", err)
+				return WrapSystemError(err, "failed to write output", "Check that the output path is writable.")
 			}
 
 			ui.PrintSuccess("PQ-tree generated")
@@ -69,7 +85,7 @@ Example: "0,1" means elements 0 and 1 must be adjacent.`,
 		},
 	}
 
-	cmd.Flags().StringVarP(&output, "output", "o", "", "output file (stdout if empty)")
+	cmd.Flags().StringVarP(&output, "output", "o", "", "output file (stdout if omitted)")
 	cmd.Flags().StringVar(&labels, "labels", "A,B,C,D", "comma-separated node labels")
 
 	return cmd

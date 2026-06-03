@@ -3,7 +3,7 @@ package transform
 import (
 	"testing"
 
-	"github.com/matzehuels/stacktower/pkg/core/dag"
+	"github.com/stacktower-io/stacktower/pkg/core/dag"
 )
 
 func TestResolveSpanOverlaps_NoOverlaps(t *testing.T) {
@@ -134,6 +134,7 @@ func TestResolveSpanOverlaps_SeparatorPlacement(t *testing.T) {
 
 	if separator == nil {
 		t.Fatal("expected a separator node")
+		return
 	}
 
 	// Separator should be in intermediate row between parents (0) and children (now at 2)

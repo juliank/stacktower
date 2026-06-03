@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/matzehuels/stacktower/pkg/core/dag"
-	"github.com/matzehuels/stacktower/pkg/core/render/tower/layout"
+	"github.com/stacktower-io/stacktower/pkg/core/dag"
+	"github.com/stacktower-io/stacktower/pkg/core/render/tower/layout"
 )
 
 func TestRenderSVG_Simple(t *testing.T) {
@@ -175,6 +175,7 @@ func TestExtractPopupData_FallsBackToNodeIDDescription(t *testing.T) {
 	p := extractPopupData(n)
 	if p == nil {
 		t.Fatal("expected popup data")
+		return
 	}
 	if p.Description != "stacktower" {
 		t.Fatalf("popup description = %q, want %q", p.Description, "stacktower")

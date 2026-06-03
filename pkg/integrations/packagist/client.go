@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/matzehuels/stacktower/pkg/cache"
-	"github.com/matzehuels/stacktower/pkg/integrations"
+	"github.com/stacktower-io/stacktower/pkg/cache"
+	"github.com/stacktower-io/stacktower/pkg/integrations"
 )
 
 // Dependency represents a Composer package dependency with version constraint.
@@ -88,13 +88,9 @@ func NewClient(backend cache.Cache, cacheTTL time.Duration) *Client {
 // This method is safe for concurrent use.
 func (c *Client) FetchPackage(ctx context.Context, pkg string, refresh bool) (*PackageInfo, error) {
 	pkg = strings.ToLower(strings.TrimSpace(pkg))
-	key := pkg
 
 	var info PackageInfo
-	err := c.Cached(ctx, key, refresh, &info, func() error {
-		return c.fetch(ctx, pkg, "", &info)
-	})
-	if err != nil {
+	if err := c.fetch(ctx, pkg, "", refresh, &info); err != nil {
 		return nil, err
 	}
 	return &info, nil
@@ -119,7 +115,7 @@ func (c *Client) FetchPackageVersion(ctx context.Context, pkg, version string, r
 
 	var info PackageInfo
 	err := c.Cached(ctx, key, refresh, &info, func() error {
-		return c.fetch(ctx, pkg, version, &info)
+		return c.fetch(ctx, pkg, version, refresh, &info)
 	})
 	if err != nil {
 		return nil, err
@@ -127,12 +123,28 @@ func (c *Client) FetchPackageVersion(ctx context.Context, pkg, version string, r
 	return &info, nil
 }
 
-func (c *Client) fetch(ctx context.Context, pkg, version string, info *PackageInfo) error {
+// fetchP2Response fetches and caches the P2 metadata for a package.
+// Both ListVersions and fetch derive from this single cached response,
+// eliminating duplicate HTTP calls to the same P2 endpoint.
+func (c *Client) fetchP2Response(ctx context.Context, pkg string, refresh bool) (p2Response, error) {
+	key := pkg + ":p2_response"
+
 	var data p2Response
-	if err := c.Get(ctx, fmt.Sprintf("%s/p2/%s.json", c.baseURL, pkg), &data); err != nil {
-		if errors.Is(err, integrations.ErrNotFound) {
-			return fmt.Errorf("%w: packagist package %s", err, pkg)
+	err := c.Cached(ctx, key, refresh, &data, func() error {
+		if err := c.Get(ctx, fmt.Sprintf("%s/p2/%s.json", c.baseURL, pkg), &data); err != nil {
+			if errors.Is(err, integrations.ErrNotFound) {
+				return fmt.Errorf("%w: packagist package %s", err, pkg)
+			}
+			return err
 		}
+		return nil
+	})
+	return data, err
+}
+
+func (c *Client) fetch(ctx context.Context, pkg, version string, refresh bool, info *PackageInfo) error {
+	data, err := c.fetchP2Response(ctx, pkg, refresh)
+	if err != nil {
 		return err
 	}
 
@@ -208,35 +220,23 @@ func filterDeps(require map[string]string) []Dependency {
 // ListVersions returns all available versions for a package, sorted from oldest to newest.
 func (c *Client) ListVersions(ctx context.Context, pkg string, refresh bool) ([]string, error) {
 	pkg = strings.ToLower(strings.TrimSpace(pkg))
-	key := pkg + ":versions"
 
-	var versions []string
-	err := c.Cached(ctx, key, refresh, &versions, func() error {
-		var data p2Response
-		if err := c.Get(ctx, fmt.Sprintf("%s/p2/%s.json", c.baseURL, pkg), &data); err != nil {
-			if errors.Is(err, integrations.ErrNotFound) {
-				return fmt.Errorf("%w: packagist package %s", err, pkg)
-			}
-			return err
-		}
-
-		pkgVersions, ok := data.Packages[pkg]
-		if !ok || len(pkgVersions) == 0 {
-			return fmt.Errorf("no versions found for %s", pkg)
-		}
-
-		versions = make([]string, 0, len(pkgVersions))
-		for _, v := range pkgVersions {
-			versions = append(versions, v.Version)
-		}
-
-		// Sort versions semantically (oldest to newest)
-		integrations.SortVersions(versions)
-		return nil
-	})
+	data, err := c.fetchP2Response(ctx, pkg, refresh)
 	if err != nil {
 		return nil, err
 	}
+
+	pkgVersions, ok := data.Packages[pkg]
+	if !ok || len(pkgVersions) == 0 {
+		return nil, fmt.Errorf("no versions found for %s", pkg)
+	}
+
+	versions := make([]string, 0, len(pkgVersions))
+	for _, v := range pkgVersions {
+		versions = append(versions, v.Version)
+	}
+
+	integrations.SortVersions(versions)
 	return versions, nil
 }
 
@@ -278,7 +278,8 @@ func (c *Client) ListVersionsWithConstraints(ctx context.Context, pkg string, re
 func latestStable(versions []p2Version) p2Version {
 	for _, v := range versions {
 		lv := strings.ToLower(v.Version)
-		if strings.Contains(lv, "dev") {
+		if strings.Contains(lv, "dev") || strings.Contains(lv, "alpha") ||
+			strings.Contains(lv, "beta") || strings.Contains(lv, "rc") {
 			continue
 		}
 		if strings.Contains(strings.TrimPrefix(lv, "v"), ".") {

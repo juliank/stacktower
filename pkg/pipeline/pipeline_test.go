@@ -3,7 +3,7 @@ package pipeline
 import (
 	"testing"
 
-	"github.com/matzehuels/stacktower/pkg/core/deps"
+	"github.com/stacktower-io/stacktower/pkg/core/deps"
 )
 
 func TestValidateFormat(t *testing.T) {
@@ -126,6 +126,13 @@ func TestOptionsValidateForParse(t *testing.T) {
 	opts = Options{Language: "python", Manifest: "content", ManifestFilename: "poetry.lock"}
 	if err := opts.ValidateForParse(); err != nil {
 		t.Errorf("Valid manifest options should pass: %v", err)
+	}
+
+	// Manifest filename must be a basename because in-memory manifests are
+	// written to a temporary directory before parser execution.
+	opts = Options{Language: "python", Manifest: "content", ManifestFilename: "../poetry.lock"}
+	if err := opts.ValidateForParse(); err == nil {
+		t.Error("Manifest filename with path traversal should fail")
 	}
 
 	// Invalid dependency scope

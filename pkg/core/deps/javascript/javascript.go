@@ -4,10 +4,10 @@ import (
 	"context"
 	"strings"
 
-	"github.com/matzehuels/stacktower/pkg/cache"
-	"github.com/matzehuels/stacktower/pkg/core/deps"
-	"github.com/matzehuels/stacktower/pkg/core/deps/constraints"
-	"github.com/matzehuels/stacktower/pkg/integrations/npm"
+	"github.com/stacktower-io/stacktower/pkg/cache"
+	"github.com/stacktower-io/stacktower/pkg/core/deps"
+	"github.com/stacktower-io/stacktower/pkg/core/deps/constraints"
+	"github.com/stacktower-io/stacktower/pkg/integrations/npm"
 )
 
 // Language provides JavaScript/TypeScript dependency resolution via npm.
@@ -15,7 +15,7 @@ import (
 var Language = &deps.Language{
 	Name:                  "javascript",
 	DefaultRegistry:       "npm",
-	DefaultRuntimeVersion: "20", // Node.js LTS
+	DefaultRuntimeVersion: "22.12.0", // Node.js LTS baseline for npm engines.node checks
 	ManifestTypes:         []string{"package", "package-lock"},
 	ManifestAliases: map[string]string{
 		"package.json":      "package",
@@ -52,8 +52,11 @@ func newResolver(backend cache.Cache, opts deps.Options) (deps.Resolver, error) 
 	c := npm.NewClient(backend, opts.CacheTTL)
 	f := fetcher{client: c, nodeVersion: opts.RuntimeVersion}
 
-	// Use PubGrub for proper SAT-solver-based dependency resolution
-	return deps.NewPubGrubResolver("npm", f, SemverMatcher{})
+	// npm permits multiple installed copies of the same package at different
+	// versions (nested node_modules). Use a greedy BFS resolver that mirrors
+	// npm's actual install algorithm instead of PubGrub's single-version SAT
+	// solver, which can't handle npm's multi-version model efficiently.
+	return &npmResolver{fetcher: f, matcher: SemverMatcher{}}, nil
 }
 
 type fetcher struct {

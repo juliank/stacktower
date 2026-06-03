@@ -6,12 +6,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/matzehuels/stacktower/pkg/cache"
-	"github.com/matzehuels/stacktower/pkg/core/dag"
-	"github.com/matzehuels/stacktower/pkg/core/deps"
-	"github.com/matzehuels/stacktower/pkg/core/deps/constraints"
-	"github.com/matzehuels/stacktower/pkg/core/deps/languages"
-	"github.com/matzehuels/stacktower/pkg/core/deps/metadata"
+	"github.com/stacktower-io/stacktower/pkg/cache"
+	"github.com/stacktower-io/stacktower/pkg/core/dag"
+	"github.com/stacktower-io/stacktower/pkg/core/deps"
+	"github.com/stacktower-io/stacktower/pkg/core/deps/constraints"
+	"github.com/stacktower-io/stacktower/pkg/core/deps/languages"
+	"github.com/stacktower-io/stacktower/pkg/core/deps/metadata"
 )
 
 // ParseResult contains the parsed dependency graph and metadata.
@@ -111,6 +111,7 @@ func Parse(ctx context.Context, c cache.Cache, opts Options) (*ParseResult, erro
 	// Store parse options in graph metadata so they persist through caching
 	filteredGraph.Meta()["runtime_version"] = runtimeVersion
 	filteredGraph.Meta()["runtime_source"] = runtimeSource
+	filteredGraph.Meta()["language"] = opts.Language
 	filteredGraph.Meta()["dependency_scope"] = opts.DependencyScope
 	filteredGraph.Meta()["include_prerelease"] = opts.IncludePrerelease
 
@@ -236,7 +237,7 @@ func parseManifestWithResult(ctx context.Context, c cache.Cache, lang *deps.Lang
 		}
 		defer os.RemoveAll(tmpDir)
 
-		filePath = filepath.Join(tmpDir, opts.ManifestFilename)
+		filePath = filepath.Join(tmpDir, manifestName)
 		if err := os.WriteFile(filePath, []byte(opts.Manifest), 0644); err != nil {
 			return nil, fmt.Errorf("write temp file: %w", err)
 		}

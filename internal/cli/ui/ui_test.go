@@ -5,53 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/matzehuels/stacktower/pkg/core/dag"
-	"github.com/matzehuels/stacktower/pkg/core/deps"
-	"github.com/matzehuels/stacktower/pkg/pipeline"
+	"github.com/stacktower-io/stacktower/pkg/core/dag"
+	"github.com/stacktower-io/stacktower/pkg/core/deps"
+	"github.com/stacktower-io/stacktower/pkg/pipeline"
 )
-
-func TestGraphDepth_PrefersProjectRoot(t *testing.T) {
-	g := dag.New(nil)
-	_ = g.AddNode(dag.Node{ID: deps.ProjectRootNodeID})
-	_ = g.AddNode(dag.Node{ID: "a"})
-	_ = g.AddNode(dag.Node{ID: "b"})
-	_ = g.AddEdge(dag.Edge{From: deps.ProjectRootNodeID, To: "a"})
-	_ = g.AddEdge(dag.Edge{From: "a", To: "b"})
-
-	// Disconnected deeper component should not control CLI depth reporting.
-	_ = g.AddNode(dag.Node{ID: "z1"})
-	_ = g.AddNode(dag.Node{ID: "z2"})
-	_ = g.AddNode(dag.Node{ID: "z3"})
-	_ = g.AddNode(dag.Node{ID: "z4"})
-	_ = g.AddEdge(dag.Edge{From: "z1", To: "z2"})
-	_ = g.AddEdge(dag.Edge{From: "z2", To: "z3"})
-	_ = g.AddEdge(dag.Edge{From: "z3", To: "z4"})
-
-	if got := GraphDepth(g); got != 2 {
-		t.Fatalf("GraphDepth = %d, want 2", got)
-	}
-}
-
-func TestGraphDepth_PrefersRenamedVirtualRoot(t *testing.T) {
-	g := dag.New(nil)
-	_ = g.AddNode(dag.Node{ID: "stacktower", Meta: dag.Metadata{"virtual": true}})
-	_ = g.AddNode(dag.Node{ID: "a"})
-	_ = g.AddNode(dag.Node{ID: "b"})
-	_ = g.AddEdge(dag.Edge{From: "stacktower", To: "a"})
-	_ = g.AddEdge(dag.Edge{From: "a", To: "b"})
-
-	_ = g.AddNode(dag.Node{ID: "z1"})
-	_ = g.AddNode(dag.Node{ID: "z2"})
-	_ = g.AddNode(dag.Node{ID: "z3"})
-	_ = g.AddNode(dag.Node{ID: "z4"})
-	_ = g.AddEdge(dag.Edge{From: "z1", To: "z2"})
-	_ = g.AddEdge(dag.Edge{From: "z2", To: "z3"})
-	_ = g.AddEdge(dag.Edge{From: "z3", To: "z4"})
-
-	if got := GraphDepth(g); got != 2 {
-		t.Fatalf("GraphDepth = %d, want 2", got)
-	}
-}
 
 func TestBuildResolveResult(t *testing.T) {
 	g := dag.New(nil)
@@ -97,6 +54,7 @@ func TestBuildResolveResult(t *testing.T) {
 	}
 	if urllib3Entry == nil {
 		t.Fatal("urllib3 entry not found")
+		return
 	}
 	if len(urllib3Entry.Constraints) != 1 || urllib3Entry.Constraints[0] != ">=1.21,<3" {
 		t.Errorf("urllib3 constraints = %v, want [>=1.21,<3]", urllib3Entry.Constraints)

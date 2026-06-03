@@ -1,10 +1,8 @@
 // Package session provides session management for authenticated users.
 //
-// This package defines interfaces for session storage and OAuth state management,
-// with implementations for different backends:
-//   - memory: In-memory storage for development/testing
-//   - redis: Redis-backed storage for production multi-instance deployments
-//   - file: File-based storage for CLI applications
+// This package defines interfaces for session storage and OAuth state management.
+// The CLI uses a file-based store; other backends (memory, redis) can be
+// implemented against the [Store] and [StateStore] interfaces.
 //
 // # Architecture
 //
@@ -21,18 +19,9 @@
 //
 // # Usage
 //
-// Create a session store:
+// Create a session store for CLI use:
 //
-//	// Development
-//	store := memory.NewStore()
-//
-//	// Production
-//	store, err := redis.NewStore(ctx, redis.Config{
-//	    Addr: "localhost:6379",
-//	})
-//
-//	// CLI
-//	store, err := file.NewStore("")  // Uses ~/.config/stacktower/sessions/
+//	store, err := session.NewCLIStore()  // Uses ~/.config/stacktower/sessions/
 //
 // Manage sessions:
 //
@@ -41,10 +30,10 @@
 //	if err != nil {
 //	    return err
 //	}
-//	store.Set(ctx, sess)
+//	store.SaveSession(ctx, sess)
 //
 //	// Retrieve session
-//	sess, err := store.Get(ctx, sessionID)
+//	sess, err := store.GetSession(ctx)
 //	if err != nil {
 //	    return err
 //	}
@@ -61,13 +50,15 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/matzehuels/stacktower/pkg/integrations/github"
+	"github.com/stacktower-io/stacktower/pkg/cache"
+	"github.com/stacktower-io/stacktower/pkg/integrations/github"
 )
 
 // Sentinel errors for session operations.
 var (
 	// ErrNotFound is returned when a session does not exist.
-	ErrNotFound = errors.New("not found")
+	// Shared with cache/integrations for consistent errors.Is checks.
+	ErrNotFound = cache.ErrNotFound
 
 	// ErrExpired is returned when a session has exceeded its TTL.
 	ErrExpired = errors.New("expired")
@@ -171,23 +162,4 @@ func New(accessToken string, user *github.User, ttl time.Duration) (*Session, er
 		ExpiresAt:   now.Add(ttl),
 		CreatedAt:   now,
 	}, nil
-}
-
-// MockLocal creates a mock session for local development without authentication.
-// This is used when --no-auth is enabled in standalone mode.
-// The mock user has ID "local" and no GitHub access token.
-func MockLocal() *Session {
-	now := time.Now()
-	return &Session{
-		ID:          "local-session",
-		AccessToken: "", // No token - can't make authenticated GitHub API calls
-		User: &github.User{
-			ID:        0,
-			Login:     "local",
-			Name:      "Local User",
-			AvatarURL: "",
-		},
-		ExpiresAt: now.Add(365 * 24 * time.Hour), // Never expires
-		CreatedAt: now,
-	}
 }
