@@ -34,9 +34,11 @@
 //
 // # Version Selection
 //
-// The client fetches the latest version from the flatcontainer index.
-// Versions are typically sorted by the API, with the last entry being the most recent.
-// Prerelease versions are included if no stable version exists.
+// The client prefers the latest stable version (no pre-release suffix) from the
+// flatcontainer index. If only pre-release versions exist, the latest pre-release
+// is used. Stable versions are preferred because the NuGet catalog/registration
+// APIs sometimes return 404 for pre-release packages; stable packages always
+// have full metadata available.
 //
 // # Dependency Filtering
 //

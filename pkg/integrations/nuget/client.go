@@ -132,13 +132,15 @@ func (c *Client) fetchPackageVersion(ctx context.Context, pkg, version string, i
 // FetchPackage retrieves metadata for a .NET package from NuGet.org.
 //
 // The pkg parameter is normalized to lowercase for API requests (NuGet is case-insensitive).
-// Package name cannot be empty; an empty string will result in an API error.
+// Package name cannot be empty; an empty or whitespace-only string returns an error
+// immediately without making any API calls.
 //
 // If refresh is true, the cache is bypassed and a fresh API call is made.
 // If refresh is false, cached data is returned if available and not expired.
 //
 // Returns:
-//   - PackageInfo populated with metadata for the latest version
+//   - PackageInfo populated with metadata for the latest stable version (or latest
+//     pre-release if no stable version exists)
 //   - [integrations.ErrNotFound] if the package doesn't exist
 //   - [integrations.ErrNetwork] for HTTP failures (timeout, 5xx, etc.)
 //   - Other errors for JSON decoding failures
